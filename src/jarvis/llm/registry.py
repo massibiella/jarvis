@@ -11,7 +11,7 @@ from __future__ import annotations
 from jarvis.llm.base import LLMAdapter
 
 ADAPTER_REGISTRY: dict[str, type[LLMAdapter]] = {
-    # "anthropic": AnthropicAdapter,
+    # "anthropic": AnthropicAdapter,  # from jarvis.llm.adapters.anthropic_adapter
 }
 
 

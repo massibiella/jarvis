@@ -18,8 +18,12 @@ TODO (Step 4, extended in Step 7): implement `main()`. See docs/PLAN.md
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
 
 def main() -> None:
+    load_dotenv()
+
     raise NotImplementedError("TODO: Step 4 — see docs/PLAN.md")
 
 

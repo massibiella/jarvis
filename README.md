@@ -9,7 +9,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp config/config.example.yaml config.yaml
-export ANTHROPIC_API_KEY=sk-...
+cp .env.example .env   # then fill in your real API keys — .env is gitignored
 ```
 
 ## Development

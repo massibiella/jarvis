@@ -44,6 +44,52 @@ stub-response → Piper TTS → orb-reacts-to-audio loop.
   convenient for a v1 demo but not itself open-source/local; a Whisper-based
   swap is the likely upgrade path if a fully local STT+TTS pipeline is
   wanted later.
+# Jarvis — Front-End HUD (v1 prototype)
+
+First pass at the JARVIS-style interface described in [PRD.md](PRD.md) §4.5
+and §4.12. This branch is scoped to the front-end and voice pipeline only —
+there is no agent/reasoning backend wired in yet (see `frontend/src/lib/stubAssistant.ts`).
+
+## What's here
+
+- **`frontend/`** — React + TypeScript + Vite app. Full-screen dark HUD with
+  a canvas-based, audio-reactive "orb" at its center that visualizes the
+  assistant's state (idle / listening / thinking / speaking) as a glowing
+  circular waveform. Voice input via the browser's Speech Recognition API,
+  with a text input as a fully-functional fallback.
+- **`voice-server/`** — minimal local HTTP server wrapping
+  [Piper](https://github.com/OHF-Voice/piper1-gpl), an open-source, fully
+  offline neural TTS engine, so Jarvis has an actual voice. See
+  `voice-server/README.md` for setup.
+
+## Running it
+
+```sh
+# Terminal 1 — voice server
+cd voice-server
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r requirements.txt
+# download the voice model — see voice-server/README.md
+./.venv/Scripts/python server.py
+
+# Terminal 2 — frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Open the printed local URL. Click **Speak** (Chrome/Edge required for voice
+input) or type into the text field — either path goes through the same
+stub-response → Piper TTS → orb-reacts-to-audio loop.
+
+## Known gaps (expected at this stage)
+
+- No real reasoning/agent backend — responses are canned placeholders.
+- No auth/multi-user support yet (PRD §4.6).
+- STT uses the browser's built-in Speech Recognition API, which is
+  convenient for a v1 demo but not itself open-source/local; a Whisper-based
+  swap is the likely upgrade path if a fully local STT+TTS pipeline is
+  wanted later.
 # Jarvis
 
 A personal assistant agent. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's built today, and [`docs/PLAN.md`](docs/PLAN.md) for the current milestone's scope and implementation order.

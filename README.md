@@ -2,7 +2,7 @@
 
 First pass at the JARVIS-style interface described in [PRD.md](PRD.md) §4.5
 and §4.12. This branch is scoped to the front-end and voice pipeline only —
-there is no agent/reasoning backend wired in yet (see `frontend/src/lib/stubAssistant.ts`).
+there is no agent/reasoning backend wired in yet (see `frontend/src/lib/backend.ts`).
 
 ## What's here
 

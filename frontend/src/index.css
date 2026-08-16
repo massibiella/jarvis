@@ -2,12 +2,12 @@
 
 :root {
   color-scheme: dark;
-  --bg: #04070a;
-  --bg-panel: rgba(12, 22, 26, 0.6);
-  --cyan: #4dfff0;
-  --cyan-dim: #2ce0d4;
-  --text: #d9fbf7;
-  --text-dim: #6f9a97;
+  --bg: #0a0404;
+  --bg-panel: rgba(26, 12, 12, 0.6);
+  --red: #ff4d4d;
+  --red-dim: #e02c2c;
+  --text: #fbd9d9;
+  --text-dim: #9a6f6f;
   --error: #ff6b6b;
 }
 
@@ -23,7 +23,7 @@ body,
 }
 
 body {
-  background: radial-gradient(circle at 50% 30%, #0a1418 0%, #04070a 70%);
+  background: radial-gradient(circle at 50% 30%, #180a0a 0%, #0a0404 70%);
   color: var(--text);
   font-family: "Rajdhani", sans-serif;
   overflow: hidden;
@@ -47,8 +47,8 @@ body {
 .hud-title {
   font-family: "Orbitron", sans-serif;
   font-size: 1.1rem;
-  color: var(--cyan);
-  text-shadow: 0 0 12px rgba(77, 255, 240, 0.6);
+  color: var(--red);
+  text-shadow: 0 0 12px rgba(255, 77, 77, 0.6);
 }
 
 .hud-status {
@@ -104,8 +104,8 @@ body {
 }
 
 .assistant-line {
-  color: var(--cyan);
-  text-shadow: 0 0 8px rgba(77, 255, 240, 0.35);
+  color: var(--red);
+  text-shadow: 0 0 8px rgba(255, 77, 77, 0.35);
 }
 
 .error-line {
@@ -124,23 +124,23 @@ body {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   background: var(--bg-panel);
-  border: 1px solid var(--cyan-dim);
-  color: var(--cyan);
+  border: 1px solid var(--red-dim);
+  color: var(--red);
   border-radius: 999px;
   padding: 0.85rem 2rem;
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 0 12px rgba(44, 224, 212, 0.15);
+  box-shadow: 0 0 12px rgba(224, 44, 44, 0.15);
 }
 
 .mic-button:hover:not(:disabled) {
-  box-shadow: 0 0 20px rgba(77, 255, 240, 0.4);
+  box-shadow: 0 0 20px rgba(255, 77, 77, 0.4);
 }
 
 .mic-button.active {
-  background: rgba(77, 255, 240, 0.15);
-  box-shadow: 0 0 24px rgba(77, 255, 240, 0.6);
+  background: rgba(255, 77, 77, 0.15);
+  box-shadow: 0 0 24px rgba(255, 77, 77, 0.6);
 }
 
 .mic-button:disabled {
@@ -155,7 +155,7 @@ body {
 
 .text-fallback input {
   background: var(--bg-panel);
-  border: 1px solid rgba(77, 255, 240, 0.25);
+  border: 1px solid rgba(255, 77, 77, 0.25);
   border-radius: 999px;
   padding: 0.7rem 1.2rem;
   color: var(--text);
@@ -166,12 +166,12 @@ body {
 
 .text-fallback input:focus {
   outline: none;
-  border-color: var(--cyan-dim);
+  border-color: var(--red-dim);
 }
 
 .text-fallback button {
   background: transparent;
-  border: 1px solid rgba(77, 255, 240, 0.25);
+  border: 1px solid rgba(255, 77, 77, 0.25);
   color: var(--text-dim);
   border-radius: 999px;
   padding: 0.7rem 1.2rem;
@@ -180,8 +180,8 @@ body {
 }
 
 .text-fallback button:hover:not(:disabled) {
-  color: var(--cyan);
-  border-color: var(--cyan-dim);
+  color: var(--red);
+  border-color: var(--red-dim);
 }
 
 .text-fallback button:disabled {

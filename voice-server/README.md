@@ -46,3 +46,13 @@ Serves on `http://localhost:8765`:
 
 The frontend's `VITE_TTS_ENDPOINT` (see `frontend/.env.example`) points at
 `/speak` by default.
+
+## Tests
+
+```sh
+./.venv/Scripts/python -m pytest
+```
+
+`test_server.py` fakes out the `piper` package and the on-disk model file, so
+tests run in well under a second and don't need a real voice model
+downloaded or `onnxruntime` installed.

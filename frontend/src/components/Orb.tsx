@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { audioEngine } from "../lib/audioEngine";
+import { audioEngine } from "../lib/voice";
 import type { AssistantState } from "../types";
 
 interface OrbProps {

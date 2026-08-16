@@ -19,6 +19,8 @@ from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from piper import PiperVoice
 
+# ---- Setup: load the Piper voice model once at startup --------------------
+
 MODEL_DIR = Path(__file__).parent / "models"
 MODEL_PATH = MODEL_DIR / "en_GB-alan-medium.onnx"
 
@@ -32,6 +34,9 @@ if not MODEL_PATH.exists():
     )
 
 voice = PiperVoice.load(str(MODEL_PATH))
+
+
+# ---- Routes -----------------------------------------------------------------
 
 
 @app.post("/speak")

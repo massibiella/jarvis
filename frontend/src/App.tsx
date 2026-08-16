@@ -1,12 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Orb } from "./components/Orb";
 import { MindMap } from "./components/MindMap";
-import { audioEngine } from "./lib/audioEngine";
-import { speak } from "./lib/ttsClient";
-import { getStubResponse } from "./lib/stubAssistant";
-import { getMindMapData } from "./lib/mindMapData";
-import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
-import type { AssistantState } from "./types";
+import { audioEngine, useSpeechRecognition } from "./lib/voice";
+import { speak, getStubResponse } from "./lib/backend";
+import { mindMapData, type AssistantState } from "./types";
 
 const STATE_LABEL: Record<AssistantState, string> = {
   idle: "Standing by",
@@ -24,11 +21,11 @@ export default function App() {
   const [errorText, setErrorText] = useState("");
   const [textInput, setTextInput] = useState("");
   const busyRef = useRef(false);
-  const mindMapData = useMemo(() => getMindMapData(), []);
 
   const { isSupported, isListening, transcript, interimTranscript, start, stop } =
     useSpeechRecognition();
 
+  // ---- Core loop: user text -> stub "reasoning" -> Piper TTS -> Orb reacts ----
   const respond = useCallback(async (userText: string) => {
     if (!userText.trim() || busyRef.current) return;
     busyRef.current = true;
@@ -47,6 +44,7 @@ export default function App() {
     }
   }, []);
 
+  // ---- Input handlers: mic (voice), text field (fallback), view switch ----
   const handleMicToggle = useCallback(async () => {
     if (isListening) {
       stop();
@@ -86,6 +84,8 @@ export default function App() {
     setView((v) => (v === "assistant" ? "mindmap" : "assistant"));
   }, [isListening, stop]);
 
+  // ---- Layout: header, assistant view (Orb + transcript + controls) or
+  // ---- neural-map view, and the corner button that switches between them ----
   return (
     <div className="hud">
       <header className="hud-header">

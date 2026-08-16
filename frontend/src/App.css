@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
 
+/* ---- Theme + page reset ------------------------------------------------ */
+
 :root {
   color-scheme: dark;
   --bg: #0a0404;
@@ -28,6 +30,8 @@ body {
   font-family: "Rajdhani", sans-serif;
   overflow: hidden;
 }
+
+/* ---- HUD shell: header + main content area ----------------------------- */
 
 .hud {
   height: 100vh;
@@ -67,6 +71,8 @@ body {
   min-height: 0;
 }
 
+/* ---- Orb (see components/Orb.tsx) --------------------------------------- */
+
 .orb-container {
   width: min(60vh, 60vw, 480px);
   height: min(60vh, 60vw, 480px);
@@ -78,6 +84,8 @@ body {
 .orb-container canvas {
   display: block;
 }
+
+/* ---- Transcript: what the user said / what Jarvis replied -------------- */
 
 .transcript {
   max-width: 640px;
@@ -111,6 +119,8 @@ body {
 .error-line {
   color: var(--error);
 }
+
+/* ---- Footer controls: mic button + text-input fallback ------------------ */
 
 .hud-footer {
   display: flex;
@@ -189,6 +199,8 @@ body {
   cursor: not-allowed;
 }
 
+/* ---- View toggle (assistant <-> neural map) ----------------------------- */
+
 .view-toggle {
   position: fixed;
   right: 2rem;
@@ -211,6 +223,8 @@ body {
   box-shadow: 0 0 20px rgba(255, 77, 77, 0.5);
   color: #ffb3b3;
 }
+
+/* ---- Neural map (see components/MindMap.tsx) ---------------------------- */
 
 .mindmap-main {
   width: 100%;

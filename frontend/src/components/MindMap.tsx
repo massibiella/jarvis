@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
-import type { MindMapNode } from "../lib/mindMapData";
+import type { MindMapNode } from "../types";
 
+// ---------------------------------------------------------------------------
+// Radial tree view: root at the center, each subtree gets an angular slice
+// proportional to its leaf count so branches never overlap, regardless of
+// how deep or wide the tree grows.
+// ---------------------------------------------------------------------------
 interface MindMapProps {
   root: MindMapNode;
 }
@@ -18,11 +23,6 @@ function countLeaves(node: MindMapNode): number {
   return node.children.reduce((sum, child) => sum + countLeaves(child), 0);
 }
 
-/**
- * Radial tree layout: root at the center, each subtree gets an angular
- * slice proportional to its leaf count so branches never overlap,
- * regardless of how deep or wide the tree grows.
- */
 function layout(
   node: MindMapNode,
   depth: number,

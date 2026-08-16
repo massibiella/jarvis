@@ -228,6 +228,22 @@ Confirm `data/memory/users/default/facts.md` contains the note and `index.md` re
 
 **Acceptance gate:** `pytest` and `ruff check . && ruff format --check .` both clean.
 
+## Future step: conversation history management (post–Milestone 1)
+
+Not in scope for Milestone 1 — `self.history` in `agent.py` can grow unbounded for now. Revisit once the core loop (Steps 3–6) is working end to end; don't let this block finishing `chat()`.
+
+**Decision (from discussion):** lean on Anthropic's native **compaction** feature rather than hand-rolling summarization or a trim-by-count policy ourselves.
+
+- Beta feature, header `compact-2026-01-12`. Available on Claude Fable 5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6.
+- Past a token threshold, Anthropic automatically summarizes older conversation content server-side and returns a `compaction` content block in the response.
+- Hard requirement: the *full* `response.content` (not just the extracted text) must be appended back into history on the next request — the compaction block has to survive being stored and resent verbatim, or the mechanism breaks.
+
+**Open design question to resolve when we get here (deliberately not decided now):** this doesn't fit cleanly into the "`chat()` is a pure stateless translator" model established in Milestone 1, because the compaction block is opaque, Anthropic-specific state that needs to round-trip through our own `ChatMessage` history untouched. Two directions to weigh at that point, not now:
+  - (a) give `ChatMessage`/`LLMResponse` an opaque passthrough field the adapter fills in and later reads back, without `agent.py` needing to know what's inside it, or
+  - (b) let the adapter keep its own internal copy of history in native format, with our neutral `list[ChatMessage]` as an external-facing view rather than the source of truth.
+
+  Either way, this is a provider-specific mechanism — a future OpenAI/other adapter without an equivalent feature would need its own strategy (e.g. plain trim-by-count), which is fine: `agent.py` shouldn't have to know or care which approach a given adapter uses, only that history stays within bounds.
+
 ## Critical files
 - `pyproject.toml`
 - `src/jarvis/llm/base.py`, `src/jarvis/llm/anthropic_adapter.py`

@@ -36,6 +36,18 @@ Open the printed local URL. Click **Speak** (Chrome/Edge required for voice
 input) or type into the text field — either path goes through the same
 stub-response → Piper TTS → orb-reacts-to-audio loop.
 
+## Tests
+
+```sh
+# frontend — Vitest + React Testing Library
+cd frontend
+npm run test
+
+# voice server — pytest, no model download needed (piper is mocked)
+cd voice-server
+./.venv/Scripts/python -m pytest
+```
+
 ## Known gaps (expected at this stage)
 
 - No real reasoning/agent backend — responses are canned placeholders.

@@ -7,8 +7,8 @@ interface OrbProps {
 }
 
 const PALETTE: Record<AssistantState, { core: string; ring: string; glow: string }> = {
-  idle: { core: "#1c4d55", ring: "#2ce0d4", glow: "rgba(44, 224, 212, 0.25)" },
-  listening: { core: "#0f5f66", ring: "#4dfff0", glow: "rgba(77, 255, 240, 0.45)" },
+  idle: { core: "#551515", ring: "#e02c2c", glow: "rgba(224, 44, 44, 0.25)" },
+  listening: { core: "#6b1010", ring: "#ff4d4d", glow: "rgba(255, 77, 77, 0.45)" },
   thinking: { core: "#3a2a5c", ring: "#a06bff", glow: "rgba(160, 107, 255, 0.4)" },
   speaking: { core: "#5c3a1a", ring: "#ffd27a", glow: "rgba(255, 210, 122, 0.5)" },
 };

@@ -3,7 +3,7 @@
 Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature is actually usable, not just started. See `PLAN.md` for the current milestone's implementation details and in-progress work.
 
 - [x] LLM-agnostic (works with any LLM given a config file) — provider adapter pattern; `GeminiAdapter` working end to end, `AnthropicAdapter` partial
-- [ ] Local weather — in progress: MCP-based, no auth needed, first target tool
+- [ ] Local weather — MCP server done and verified (`weather-mcp`, sibling project, Open-Meteo, no key). Not checked off yet: Jarvis's own `ToolRegistry` doesn't have an MCP client to actually consume it, so the agent can't use it end to end yet.
 - [ ] Google/Apple Calendar (view/create/delete/update/remind/reorganize) — MCP-based, needs Google OAuth
 - [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR

@@ -14,6 +14,13 @@ memory:
 agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
 
+# Each entry launches an MCP server as a subprocess (stdio transport).
+# command[0] must be the server's own venv Python, not a bare "python" —
+# it needs that server's dependencies installed, not Jarvis's.
+# mcp_servers:
+#   weather:
+#     command: ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"]
+
 logging:
   level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces
                  # noisy third-party library internals too (e.g. every HTTP request)

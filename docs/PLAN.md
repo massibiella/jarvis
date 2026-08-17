@@ -149,6 +149,8 @@ Three target integrations, in this order (easiest first — the later two need G
 
 For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used for the Gemini adapter. None of these are designed yet — do that when we get to each one, not now.
 
+**Transport (from discussion):** MCP servers we launch ourselves (like `weather-mcp`) start on **stdio transport** — Jarvis spawns the server as a subprocess via a command in config (e.g. `mcp_servers.weather.command: [...]`). This means the server's code must be physically present on whatever machine runs Jarvis; that's an accepted coupling for now since Jarvis runs locally on one machine. If Jarvis and its MCP servers ever need to live on separate machines (e.g. Jarvis on an always-on home server, servers elsewhere), MCP also supports **SSE/HTTP transport** — the server runs as its own persistent process and Jarvis's client connects via URL instead of spawning it. Not needed yet; revisit only when there's an actual reason to split hosts.
+
 ## Memory (index + on-demand recall)
 
 ```

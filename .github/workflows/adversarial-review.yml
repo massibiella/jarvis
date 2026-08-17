@@ -1,0 +1,103 @@
+name: Anti-Bloat Adversarial Review (Claude)
+
+# NOTE: this uses `pull_request`, not `pull_request_target`, so ANTHROPIC_API_KEY
+# is only safe as long as this repo doesn't accept PRs from forks — `pull_request`
+# runs the workflow file version from the PR head, so a forked PR could edit this
+# file to exfiltrate the secret. Revisit (env protection rules / pull_request_target
+# split) before opening this repo to external contributors.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: adversarial-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # needed for checkout
+      pull-requests: write # needed to post the review comment
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Pulls full git history to run the diff
+
+      - name: Get PR Diff
+        id: get_diff
+        run: |
+          set -euo pipefail
+
+          # Fetch the clean git diff of just the PR changes
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+
+          if [ -s pr_diff.txt ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No code changes detected."
+          fi
+
+      - name: Run Adversarial Claude Review
+        id: claude_review
+        if: steps.get_diff.outputs.has_changes == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Safe parsing of the diff into a single string
+          DIFF_CONTENT=$(cat pr_diff.txt | jq -sR .)
+
+          # Formulate the strict system prompt
+          SYSTEM_PROMPT="You are an adversarial, hyper-critical technical reviewer. Your goal is to aggressively tear holes in the pull request diff provided below, while strictly enforcing code minimalism. Assume the work is flawed, over-engineered, or bloated. Output four concise sections: 1. Fatal Flaws & Edge Cases, 2. Code Bloat & Over-Engineering, 3. Unjustified Dependencies, 4. The Lean Fix (provide ONLY the absolute minimum code needed to fix critical issues, do not rewrite clean code). Do not write polite filler or praise."
+
+          # Construct the Anthropic Messages API payload
+          JSON_PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg diff "$DIFF_CONTENT" '{
+            model: "claude-sonnet-5",
+            max_tokens: 4000,
+            system: $system,
+            messages: [
+              {role: "user", content: ("Here is the PR diff to review:\n\n" + $diff)}
+            ],
+            temperature: 0.2
+          }')
+
+          # Send to Anthropic API endpoint
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$JSON_PAYLOAD")
+
+          # Check for HTTP-level errors (401/400/5xx) rather than grepping the body
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "API error (HTTP $HTTP_STATUS):"
+            cat response.json
+            exit 1
+          fi
+
+          # Extract Claude's response text and save to a markdown file
+          jq -r '.content[0].text' response.json > review_output.md
+
+      - name: Post Comment to PR
+        if: steps.get_diff.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('review_output.md')) {
+              const reviewComment = fs.readFileSync('review_output.md', 'utf8');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: "### 🕵️‍♂️ Claude Anti-Bloat Adversarial Review\n\n" + reviewComment
+              });
+            }

@@ -2,9 +2,9 @@
 # config.yaml is gitignored — never commit real API keys or personal paths.
 
 llm:
-  provider: anthropic
-  model: claude-opus-5
-  api_key_env: ANTHROPIC_API_KEY # name of the env var holding the key — never the key itself
+  provider: gemini
+  model: gemini-flash-lite-latest
+  api_key_env: GEMINI_API_KEY # name of the env var holding the key — never the key itself
   max_tokens: 4096
 
 memory:
@@ -13,7 +13,14 @@ memory:
 
 agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
-  enable_example_tools: false # dev-only toggle for tools/examples.py
+
+# Each entry launches an MCP server as a subprocess (stdio transport).
+# command[0] must be the server's own venv Python, not a bare "python" —
+# it needs that server's dependencies installed, not Jarvis's.
+# mcp_servers:
+#   weather:
+#     command: ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"]
 
 logging:
-  level: INFO
+  level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces
+                 # noisy third-party library internals too (e.g. every HTTP request)

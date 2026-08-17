@@ -15,9 +15,6 @@ memory:
   root_dir: ./data/memory
   user_id: default
 
-agent:
-  enable_example_tools: true
-
 logging:
   level: DEBUG
 """
@@ -33,7 +30,6 @@ def test_load_valid_config(tmp_path: Path) -> None:
     assert config.llm.model == "claude-opus-5"
     assert config.llm.max_tokens == 2048
     assert config.memory.user_id == "default"
-    assert config.agent.enable_example_tools is True
     assert config.logging.level == "DEBUG"
 
 
@@ -72,3 +68,46 @@ def test_resolution_order_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     config = load_config()
 
     assert config.llm.provider == "anthropic"
+
+
+def test_mcp_servers_default_empty(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(VALID_YAML)
+
+    config = load_config(config_file)
+
+    assert config.mcp_servers == {}
+
+
+def test_mcp_servers_parsed(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        VALID_YAML
+        + """
+mcp_servers:
+  weather:
+    command: ["/path/to/.venv/bin/python", "/path/to/weather.py"]
+"""
+    )
+
+    config = load_config(config_file)
+
+    assert config.mcp_servers["weather"].command == [
+        "/path/to/.venv/bin/python",
+        "/path/to/weather.py",
+    ]
+
+
+def test_mcp_servers_missing_command_raises(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        VALID_YAML
+        + """
+mcp_servers:
+  weather:
+    not_command: nope
+"""
+    )
+
+    with pytest.raises(ConfigError, match="mcp_servers.weather"):
+        load_config(config_file)

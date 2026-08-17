@@ -182,6 +182,17 @@ Each area below lists the requirement, its scope, and acceptance criteria. Numbe
 - Changing the active LLM is achievable by editing configuration only.
 - At least two distinct LLM providers are demonstrated working against the same Jarvis core during initial implementation, to validate the abstraction.
 
+### 4.13 Commute Time
+**Requirement:** Jarvis must be able to tell the user how long their commute is going to be.
+
+- Retrieve a current, traffic-aware travel-time estimate between the user's configured origin (e.g., home) and destination (e.g., work).
+- Origin, destination, and preferred travel mode (driving, transit, etc.) are configurable per user.
+- Commute time is surfaced in the morning check-in (§4.9) and available on demand.
+
+**Acceptance criteria:**
+- A user can ask "how long is my commute" and get a current estimate that reflects live traffic conditions, not a static average.
+- Commute time appears automatically in the morning check-in without being requested.
+
 ## 5. Non-Functional Requirements
 
 ### 5.1 Security & Privacy

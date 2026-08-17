@@ -59,7 +59,6 @@ class MemoryConfig:
 @dataclass
 class AgentConfig:
     system_prompt_file: Path | None = None
-    enable_example_tools: bool = False
 
 
 @dataclass
@@ -68,11 +67,27 @@ class LoggingConfig:
 
 
 @dataclass
+class MCPServerConfig:
+    """How to launch one MCP server as a subprocess (stdio transport).
+
+    `command` must point at a Python interpreter that has the server's own
+    dependencies installed (its venv), not just any Python on PATH — e.g.
+    ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"].
+    The server's code has to be physically present on this machine; see
+    docs/PLAN.md's "MCP integrations" section for the network-transport
+    alternative if that stops being true.
+    """
+
+    command: list[str]
+
+
+@dataclass
 class JarvisConfig:
     llm: LLMConfig
     memory: MemoryConfig
     agent: AgentConfig
     logging: LoggingConfig
+    mcp_servers: dict[str, MCPServerConfig] = field(default_factory=dict)
 
 
 def _require(data: dict[str, Any], section: str) -> dict[str, Any]:
@@ -108,12 +123,21 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     prompt_file = data.get("system_prompt_file")
     return AgentConfig(
         system_prompt_file=Path(prompt_file).expanduser() if prompt_file else None,
-        enable_example_tools=data.get("enable_example_tools", False),
     )
 
 
 def _parse_logging(data: dict[str, Any]) -> LoggingConfig:
     return LoggingConfig(level=data.get("level", "INFO"))
+
+
+def _parse_mcp_servers(data: dict[str, Any]) -> dict[str, MCPServerConfig]:
+    servers = {}
+    for name, server_data in data.items():
+        try:
+            servers[name] = MCPServerConfig(command=server_data["command"])
+        except KeyError as e:
+            raise ConfigError(f"Missing required mcp_servers.{name} field: {e}") from e
+    return servers
 
 
 def _candidate_paths(explicit: str | Path | None) -> list[Path]:
@@ -163,4 +187,5 @@ def load_config(path: str | Path | None = None) -> JarvisConfig:
         memory=_parse_memory(_require(raw, "memory")),
         agent=_parse_agent(raw.get("agent", {})),
         logging=_parse_logging(raw.get("logging", {})),
+        mcp_servers=_parse_mcp_servers(raw.get("mcp_servers", {})),
     )

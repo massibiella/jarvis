@@ -50,7 +50,7 @@ frontend/
 │   │                            vite/vitest npm script
 │   └── .oxlintrc.json           lint rules, loaded via oxlint's -c flag
 ├── public/
-│   └── favicon.svg            browser tab icon, referenced by index.html
+│   └── favicon.ico             browser tab icon, referenced by index.html
 ├── src/                      application source
 │   ├── main.tsx                entry point — mounts <App /> into #root
 │   ├── App.tsx                  state machine + layout; the only file that

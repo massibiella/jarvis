@@ -1,0 +1,48 @@
+name: PR Diff (untrusted)
+
+# Untrusted: runs on `pull_request`, so this file executes with the version
+# from the PR head — a PR author controls every step here. It must NEVER
+# reference secrets. It only produces a diff artifact for the trusted
+# adversarial-review.yml workflow (triggered via workflow_run, which always
+# runs the base branch's copy of that file) to pick up.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: pr-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Pulls full git history to run the diff
+
+      - name: Get PR Diff
+        run: |
+          set -euo pipefail
+
+          # actions/checkout only guarantees the triggering ref is fetched;
+          # fetch the base branch explicitly so origin/<base_ref> resolves.
+          git fetch origin ${{ github.base_ref }}
+
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+          echo "${{ github.event.pull_request.number }}" > pr_number.txt
+
+      - name: Upload diff artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-diff
+          path: |
+            pr_diff.txt
+            pr_number.txt
+          retention-days: 1

@@ -1,0 +1,99 @@
+name: Anti-Bloat Adversarial Review (Gemini)
+
+# Trusted: runs on `workflow_run`, so GitHub always executes this file's
+# version from the base branch — a PR (even a malicious one) cannot alter
+# it. Only this workflow has access to GEMINI_API_KEY; it never checks out
+# or executes PR-controlled code, only the diff artifact produced by the
+# untrusted pr-diff.yml workflow.
+
+on:
+  workflow_run:
+    workflows: ["PR Diff (untrusted)"]
+    types: [completed]
+
+concurrency:
+  group: adversarial-review-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read # needed to download the artifact from the triggering run
+      pull-requests: write # needed to post the review comment
+
+    steps:
+      - name: Download diff artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-diff
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read PR number
+        id: pr
+        run: echo "number=$(cat pr_number.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Adversarial Gemini Review
+        id: gemini_review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -s pr_diff.txt ]; then
+            echo "No code changes detected."
+            exit 0
+          fi
+
+          # Safe parsing of the diff into a single string
+          DIFF_CONTENT=$(cat pr_diff.txt | jq -sR .)
+
+          # Formulate the strict system prompt
+          SYSTEM_PROMPT="You are an adversarial, hyper-critical technical reviewer. Your goal is to aggressively tear holes in the pull request diff provided below, while strictly enforcing code minimalism. Assume the work is flawed, over-engineered, or bloated. Output four concise sections: 1. Fatal Flaws & Edge Cases, 2. Code Bloat & Over-Engineering, 3. Unjustified Dependencies, 4. The Lean Fix (provide ONLY the absolute minimum code needed to fix critical issues, do not rewrite clean code). Do not write polite filler or praise."
+
+          # Construct the Gemini generateContent payload
+          JSON_PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg diff "$DIFF_CONTENT" '{
+            system_instruction: { parts: [ { text: $system } ] },
+            contents: [
+              { role: "user", parts: [ { text: ("Here is the PR diff to review:\n\n" + $diff) } ] }
+            ],
+            generationConfig: {
+              maxOutputTokens: 4000,
+              temperature: 0.2
+            }
+          }')
+
+          # Send to Gemini API endpoint
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent" \
+            -H "content-type: application/json" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
+            -d "$JSON_PAYLOAD")
+
+          # Check for HTTP-level errors (401/400/5xx) rather than grepping the body
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "API error (HTTP $HTTP_STATUS):"
+            cat response.json
+            exit 1
+          fi
+
+          # Extract Gemini's response text and save to a markdown file
+          jq -r '.candidates[0].content.parts[0].text' response.json > review_output.md
+
+      - name: Post Comment to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('review_output.md')) {
+              const reviewComment = fs.readFileSync('review_output.md', 'utf8');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ steps.pr.outputs.number }},
+                body: "### 🕵️‍♂️ Gemini Anti-Bloat Adversarial Review\n\n" + reviewComment
+              });
+            }

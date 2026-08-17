@@ -9,10 +9,10 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp config/config.example.yaml config.yaml
-export GEMINI_API_KEY=...
+cp .env.example .env   # then fill in your real API keys — .env is gitignored
 ```
 
-Alternatively, put `GEMINI_API_KEY=...` in a `.env` file at the repo root — `jarvis` loads it automatically on startup. See .env.example.
+`jarvis` loads `.env` automatically on startup; alternatively `export GEMINI_API_KEY=...` in your shell works too.
 
 ### MCP servers (optional)
 

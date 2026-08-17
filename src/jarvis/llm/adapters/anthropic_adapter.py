@@ -40,9 +40,9 @@ class AnthropicAdapter(LLMAdapter):
         system: str | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
-        raise NotImplementedError("API Paid plan required. We'll levae this for later.")
+        raise NotImplementedError("API Paid plan required. We'll leave this for later.")
     
-        # Build message list according to Anthropic's specs
+        # Build message list according to Anthropic's specs 
         anthropic_messages = self._to_anthropic_message(messages)
 
         response = self._client.messages.create(

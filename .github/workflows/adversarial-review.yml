@@ -1,55 +1,52 @@
 name: Anti-Bloat Adversarial Review (Gemini)
 
-# NOTE: this uses `pull_request`, not `pull_request_target`, so GEMINI_API_KEY
-# is only safe as long as this repo doesn't accept PRs from forks — `pull_request`
-# runs the workflow file version from the PR head, so a forked PR could edit this
-# file to exfiltrate the secret. Revisit (env protection rules / pull_request_target
-# split) before opening this repo to external contributors.
+# Trusted: runs on `workflow_run`, so GitHub always executes this file's
+# version from the base branch — a PR (even a malicious one) cannot alter
+# it. Only this workflow has access to GEMINI_API_KEY; it never checks out
+# or executes PR-controlled code, only the diff artifact produced by the
+# untrusted pr-diff.yml workflow.
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  workflow_run:
+    workflows: ["PR Diff (untrusted)"]
+    types: [completed]
 
 concurrency:
-  group: adversarial-review-${{ github.event.pull_request.number }}
+  group: adversarial-review-${{ github.event.workflow_run.id }}
   cancel-in-progress: true
 
 jobs:
   review:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read # needed for checkout
+      actions: read # needed to download the artifact from the triggering run
       pull-requests: write # needed to post the review comment
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Download diff artifact
+        uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0 # Pulls full git history to run the diff
+          name: pr-diff
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get PR Diff
-        id: get_diff
-        run: |
-          set -euo pipefail
-
-          # Fetch the clean git diff of just the PR changes
-          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
-
-          if [ -s pr_diff.txt ]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "No code changes detected."
-          fi
+      - name: Read PR number
+        id: pr
+        run: echo "number=$(cat pr_number.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Run Adversarial Gemini Review
         id: gemini_review
-        if: steps.get_diff.outputs.has_changes == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
+
+          if [ ! -s pr_diff.txt ]; then
+            echo "No code changes detected."
+            exit 0
+          fi
 
           # Safe parsing of the diff into a single string
           DIFF_CONTENT=$(cat pr_diff.txt | jq -sR .)
@@ -86,7 +83,6 @@ jobs:
           jq -r '.candidates[0].content.parts[0].text' response.json > review_output.md
 
       - name: Post Comment to PR
-        if: steps.get_diff.outputs.has_changes == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -97,7 +93,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: ${{ steps.pr.outputs.number }},
                 body: "### 🕵️‍♂️ Gemini Anti-Bloat Adversarial Review\n\n" + reviewComment
               });
             }

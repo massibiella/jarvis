@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getStubResponse } from "./backend";
+import { getStubResponse } from "../../src/lib/backend";
 
 // backend.ts always imports voice.ts (for audioEngine.connectElement); stub
 // it out so these tests never touch the real Web Audio API.
-vi.mock("./voice", () => ({
+vi.mock("../../src/lib/voice", () => ({
   audioEngine: { connectElement: vi.fn() },
 }));
 
@@ -50,7 +50,7 @@ class FakeAudio extends EventTarget {
 
 async function freshBackend() {
   vi.resetModules();
-  return import("./backend");
+  return import("../../src/lib/backend");
 }
 
 describe("speak", () => {

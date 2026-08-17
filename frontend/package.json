@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview",
-    "test": "vitest run"
+    "dev": "vite --config package/vite.config.ts",
+    "build": "tsc -p package/tsconfig.json && vite --config package/vite.config.ts build",
+    "lint": "oxlint -c package/.oxlintrc.json --tsconfig package/tsconfig.json",
+    "preview": "vite --config package/vite.config.ts preview",
+    "test": "vitest run --config package/vite.config.ts"
   },
   "dependencies": {
     "react": "^19.2.8",

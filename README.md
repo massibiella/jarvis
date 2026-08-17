@@ -11,7 +11,7 @@ there is no agent/reasoning backend wired in yet (see `frontend/src/lib/backend.
   assistant's state (idle / listening / thinking / speaking) as a glowing
   circular waveform. Voice input via the browser's Speech Recognition API,
   with a text input as a fully-functional fallback. See
-  `frontend/FrontEnd_README.md` for how it works internally (file layout,
+  `frontend/README.md` for how it works internally (file layout,
   data flow, the audio pipeline).
 - **`voice-server/`** — minimal local HTTP server wrapping
   [Piper](https://github.com/OHF-Voice/piper1-gpl), an open-source, fully

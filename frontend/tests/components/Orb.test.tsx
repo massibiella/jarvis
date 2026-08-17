@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Orb } from "./Orb";
-import type { AssistantState } from "../types";
+import { Orb } from "../../src/components/Orb";
+import type { AssistantState } from "../../src/types";
 
 const STATES: AssistantState[] = ["idle", "listening", "thinking", "speaking"];
 

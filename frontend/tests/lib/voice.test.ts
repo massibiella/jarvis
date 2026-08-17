@@ -33,7 +33,7 @@ class FakeAudioContext {
 
 async function freshVoiceModule() {
   vi.resetModules();
-  return import("./voice");
+  return import("../../src/lib/voice");
 }
 
 describe("audioEngine", () => {

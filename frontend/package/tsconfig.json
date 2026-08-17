@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "types": ["vite/client"],
@@ -22,5 +22,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["../src", "../tests", "vite.config.ts"]
 }

@@ -1,6 +1,6 @@
-name: Anti-Bloat Adversarial Review (Claude)
+name: Anti-Bloat Adversarial Review (Gemini)
 
-# NOTE: this uses `pull_request`, not `pull_request_target`, so ANTHROPIC_API_KEY
+# NOTE: this uses `pull_request`, not `pull_request_target`, so GEMINI_API_KEY
 # is only safe as long as this repo doesn't accept PRs from forks — `pull_request`
 # runs the workflow file version from the PR head, so a forked PR could edit this
 # file to exfiltrate the secret. Revisit (env protection rules / pull_request_target
@@ -43,11 +43,11 @@ jobs:
             echo "No code changes detected."
           fi
 
-      - name: Run Adversarial Claude Review
-        id: claude_review
+      - name: Run Adversarial Gemini Review
+        id: gemini_review
         if: steps.get_diff.outputs.has_changes == 'true'
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -57,22 +57,22 @@ jobs:
           # Formulate the strict system prompt
           SYSTEM_PROMPT="You are an adversarial, hyper-critical technical reviewer. Your goal is to aggressively tear holes in the pull request diff provided below, while strictly enforcing code minimalism. Assume the work is flawed, over-engineered, or bloated. Output four concise sections: 1. Fatal Flaws & Edge Cases, 2. Code Bloat & Over-Engineering, 3. Unjustified Dependencies, 4. The Lean Fix (provide ONLY the absolute minimum code needed to fix critical issues, do not rewrite clean code). Do not write polite filler or praise."
 
-          # Construct the Anthropic Messages API payload
+          # Construct the Gemini generateContent payload
           JSON_PAYLOAD=$(jq -n --arg system "$SYSTEM_PROMPT" --arg diff "$DIFF_CONTENT" '{
-            model: "claude-sonnet-5",
-            max_tokens: 4000,
-            system: $system,
-            messages: [
-              {role: "user", content: ("Here is the PR diff to review:\n\n" + $diff)}
+            system_instruction: { parts: [ { text: $system } ] },
+            contents: [
+              { role: "user", parts: [ { text: ("Here is the PR diff to review:\n\n" + $diff) } ] }
             ],
-            temperature: 0.2
+            generationConfig: {
+              maxOutputTokens: 4000,
+              temperature: 0.2
+            }
           }')
 
-          # Send to Anthropic API endpoint
-          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+          # Send to Gemini API endpoint
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent" \
             -H "content-type: application/json" \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
             -d "$JSON_PAYLOAD")
 
           # Check for HTTP-level errors (401/400/5xx) rather than grepping the body
@@ -82,8 +82,8 @@ jobs:
             exit 1
           fi
 
-          # Extract Claude's response text and save to a markdown file
-          jq -r '.content[0].text' response.json > review_output.md
+          # Extract Gemini's response text and save to a markdown file
+          jq -r '.candidates[0].content.parts[0].text' response.json > review_output.md
 
       - name: Post Comment to PR
         if: steps.get_diff.outputs.has_changes == 'true'
@@ -98,6 +98,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: "### 🕵️‍♂️ Claude Anti-Bloat Adversarial Review\n\n" + reviewComment
+                body: "### 🕵️‍♂️ Gemini Anti-Bloat Adversarial Review\n\n" + reviewComment
               });
             }

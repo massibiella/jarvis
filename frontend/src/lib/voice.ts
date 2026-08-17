@@ -46,6 +46,22 @@ class AudioEngine {
     this.micStream = null;
   }
 
+  /**
+   * Ensures the underlying AudioContext exists and has actually finished
+   * resuming (not just asked to). Browsers start a new AudioContext
+   * "suspended" until a user gesture unlocks it; ensureContext() kicks that
+   * off but doesn't wait for it, so playing audio right after connecting it
+   * can start pushing samples through the graph before it's running,
+   * silently dropping the first fraction of a second. Callers that are
+   * about to play audio (not just visualize it) should await this first.
+   */
+  async resume(): Promise<void> {
+    const { ctx } = this.ensureContext();
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+  }
+
   connectElement(el: HTMLAudioElement): void {
     const { ctx, analyser } = this.ensureContext();
     if (this.elementSource) {

@@ -4,7 +4,7 @@ import { getStubResponse } from "../../src/lib/backend";
 // backend.ts always imports voice.ts (for audioEngine.connectElement); stub
 // it out so these tests never touch the real Web Audio API.
 vi.mock("../../src/lib/voice", () => ({
-  audioEngine: { connectElement: vi.fn() },
+  audioEngine: { connectElement: vi.fn(), resume: vi.fn().mockResolvedValue(undefined) },
 }));
 
 // ---------------------------------------------------------------------------
@@ -81,6 +81,32 @@ describe("speak", () => {
         body: JSON.stringify({ text: "hello there" }),
       })
     );
+  });
+
+  it("waits for the AudioContext to resume before starting playback", async () => {
+    const playOrder: string[] = [];
+    class OrderedAudio extends FakeAudio {
+      play = vi.fn(() => {
+        playOrder.push("play");
+        queueMicrotask(() => this.dispatchEvent(new Event("ended")));
+        return Promise.resolve();
+      });
+    }
+    vi.stubGlobal("Audio", OrderedAudio);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob([])) })
+    );
+    vi.resetModules();
+    const { audioEngine } = await import("../../src/lib/voice");
+    (audioEngine.resume as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      playOrder.push("resume");
+    });
+    const { speak } = await import("../../src/lib/backend");
+
+    await speak("hi");
+
+    expect(playOrder).toEqual(["resume", "play"]);
   });
 
   it("rejects when the TTS server responds with an error status", async () => {

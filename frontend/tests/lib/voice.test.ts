@@ -17,6 +17,7 @@ class FakeAnalyserNode {
 }
 
 class FakeAudioContext {
+  static instances: FakeAudioContext[] = [];
   state = "running";
   destination = {};
   createAnalyser() {
@@ -29,6 +30,25 @@ class FakeAudioContext {
     return { connect: vi.fn() };
   }
   resume = vi.fn();
+  constructor() {
+    FakeAudioContext.instances.push(this);
+  }
+}
+
+// Browsers start a fresh AudioContext "suspended" until a user gesture
+// unlocks it — this variant models that so resume() has something to do.
+// Instances are captured (like FakeSpeechRecognition.instances below) since
+// AudioEngine keeps its AudioContext private.
+class SuspendedFakeAudioContext extends FakeAudioContext {
+  static instances: SuspendedFakeAudioContext[] = [];
+  state = "suspended";
+  resume = vi.fn(async () => {
+    this.state = "running";
+  });
+  constructor() {
+    super();
+    SuspendedFakeAudioContext.instances.push(this);
+  }
 }
 
 async function freshVoiceModule() {
@@ -51,6 +71,8 @@ describe("audioEngine", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete (navigator as unknown as { mediaDevices?: unknown }).mediaDevices;
+    FakeAudioContext.instances = [];
+    SuspendedFakeAudioContext.instances = [];
   });
 
   it("has no signal until a mic or playback element is connected", async () => {
@@ -71,6 +93,27 @@ describe("audioEngine", () => {
     await audioEngine.connectMic();
     audioEngine.disconnectMic();
     expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
+  it("resume() waits for a suspended AudioContext to actually finish resuming", async () => {
+    vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+    const { audioEngine } = await freshVoiceModule();
+
+    await audioEngine.resume();
+
+    const ctx = SuspendedFakeAudioContext.instances.at(-1)!;
+    expect(ctx.resume).toHaveBeenCalledOnce();
+    expect(ctx.state).toBe("running");
+  });
+
+  it("resume() is a no-op once the AudioContext is already running", async () => {
+    const { audioEngine } = await freshVoiceModule();
+    await audioEngine.connectMic(); // creates the (already "running") context
+
+    await audioEngine.resume();
+
+    const ctx = FakeAudioContext.instances.at(-1)!;
+    expect(ctx.resume).not.toHaveBeenCalled();
   });
 });
 

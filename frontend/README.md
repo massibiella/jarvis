@@ -69,9 +69,12 @@ frontend/
 │       ├── voice.ts                 audio IN: mic capture/analysis
 │       │                            (AudioEngine) + browser speech-to-text
 │       │                            (useSpeechRecognition)
-│       └── backend.ts                calls OUT: Piper TTS request (speak)
-│                                     + the placeholder "reasoning" response
-│                                     (getStubResponse)
+│       ├── backend.ts                calls OUT: Piper TTS request (speak)
+│       │                            + the placeholder "reasoning" response
+│       │                            (getStubResponse)
+│       └── greeting.ts               pure time-of-day greeting text
+│                                     (getGreeting) — App.tsx speaks it via
+│                                     speak() once on mount
 └── tests/                    unit tests, mirrors src/ 1:1 so each test's
     │                          home file is easy to find
     ├── testSetup.ts              runs once before every test file — wires
@@ -83,7 +86,8 @@ frontend/
     │   └── MindMap.test.tsx          tests src/components/MindMap.tsx
     └── lib/
         ├── voice.test.ts             tests src/lib/voice.ts
-        └── backend.test.ts            tests src/lib/backend.ts
+        ├── backend.test.ts            tests src/lib/backend.ts
+        └── greeting.test.ts            tests src/lib/greeting.ts
 ```
 
 **Why `package.json`/`package-lock.json` stay at `frontend/` root, unlike
@@ -112,6 +116,14 @@ static assets served as-is, also root-relative.
 thinking → speaking → idle`. Everything else reacts to that state rather
 than owning its own:
 
+0. On mount, before any user input: after a `GREETING_DELAY_MS` (2s) pause —
+   so it doesn't fire the instant the HUD paints in — `App.tsx` calls
+   `getGreeting()` (`lib/greeting.ts`) for a "Good morning/afternoon/evening,
+   Sir." line based on the system clock, sets state → `speaking`, and passes
+   it to `speak()` — same TTS path as every other reply, so the Orb reacts to
+   it the same way. A ref (not just the effect's empty dep array) guards the
+   effect itself so React StrictMode's dev-mode double-invoke doesn't
+   schedule the greeting twice.
 1. User speaks (mic, via `useSpeechRecognition`) or types → `respond()` in
    `App.tsx` fires.
 2. State → `thinking`, text goes to `getStubResponse()` (`lib/backend.ts`).
@@ -136,8 +148,26 @@ For `idle` and `thinking`, there's no real audio source, so the waveform
 motion is synthetic (a calm sine-wave breathing effect vs. a faster rotating
 sweep) rather than driven by the analyser.
 
+A new `AudioContext` starts life `"suspended"` until a user gesture unlocks
+it, and resuming it is asynchronous. `speak()` (`lib/backend.ts`) awaits
+`audioEngine.resume()` before calling `audioEl.play()` — skipping that await
+(e.g. calling `play()` right after `connectElement()`) lets playback start
+routing samples through the graph while the context is still suspended,
+which silently drops the first fraction of a second of audio. This is why
+the launch greeting used to clip the "Good" off "Good evening, Sir." — see
+`AudioEngine.resume()` in `lib/voice.ts`.
+
 ## Known quirks / tradeoffs
 
+- **The launch greeting can still be blocked entirely by browser autoplay
+  policy**, separately from the resume-race above. `speak()` plays audio
+  with no prior user interaction, and Chromium-based browsers may silently
+  reject `<audio>.play()` on a page the user hasn't interacted with yet
+  (autoplay restrictions loosen after the site builds up enough Media
+  Engagement, e.g. from repeated visits during development). If the greeting
+  doesn't play at all, that's why — it's a browser policy, not a bug in
+  `speak()`/`greeting.ts`, and it self-resolves after the first
+  click/keypress on the page in that browser session.
 - **Speech-to-text is browser-native** (`SpeechRecognition` /
   `webkitSpeechRecognition`), not local/open-source. It's the fastest path
   to a working demo, but it's the first thing to swap for local Whisper if

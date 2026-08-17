@@ -3,6 +3,7 @@ import { Orb } from "./components/Orb";
 import { MindMap } from "./components/MindMap";
 import { audioEngine, useSpeechRecognition } from "./lib/voice";
 import { speak, getStubResponse } from "./lib/backend";
+import { getGreeting } from "./lib/greeting";
 import { mindMapData, type AssistantState } from "./types";
 
 const STATE_LABEL: Record<AssistantState, string> = {
@@ -11,6 +12,10 @@ const STATE_LABEL: Record<AssistantState, string> = {
   thinking: "Thinking…",
   speaking: "Speaking…",
 };
+
+// Pause before the launch greeting speaks, so it doesn't fire the instant
+// the HUD paints in.
+export const GREETING_DELAY_MS = 2000;
 
 type View = "assistant" | "mindmap";
 
@@ -21,9 +26,31 @@ export default function App() {
   const [errorText, setErrorText] = useState("");
   const [textInput, setTextInput] = useState("");
   const busyRef = useRef(false);
+  const greetedRef = useRef(false);
 
   const { isSupported, isListening, transcript, interimTranscript, start, stop } =
     useSpeechRecognition();
+
+  // Speak a time-of-day greeting once on launch, before any user input.
+  // Guarded by a ref (not just the empty dep array) because StrictMode
+  // double-invokes effects in dev, which would otherwise fire speak() twice.
+  useEffect(() => {
+    if (greetedRef.current) return;
+    greetedRef.current = true;
+    const timer = setTimeout(() => {
+      busyRef.current = true;
+      const greeting = getGreeting();
+      setState("speaking");
+      setResponseText(greeting);
+      speak(greeting)
+        .catch((err) => setErrorText(err instanceof Error ? err.message : "Something went wrong."))
+        .finally(() => {
+          setState("idle");
+          busyRef.current = false;
+        });
+    }, GREETING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Recognition can end on its own (silence timeout, browser cutoff, error)
   // without going through handleMicToggle — catch that drift and tear the

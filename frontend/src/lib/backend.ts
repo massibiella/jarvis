@@ -36,6 +36,10 @@ export async function speak(text: string): Promise<void> {
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const audioEl = getAudioElement();
+  // Make sure the shared AudioContext is actually running before playback
+  // starts — see AudioEngine.resume() for why skipping this clips the start
+  // of the audio.
+  await audioEngine.resume();
 
   return new Promise((resolve, reject) => {
     const cleanup = () => {

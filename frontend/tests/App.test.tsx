@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import App from "../src/App";
+import App, { GREETING_DELAY_MS } from "../src/App";
 
 // Isolate App's own state/wiring from the network call and the stub
 // "reasoning" — both are covered directly in lib/backend.test.ts. Mic input
@@ -11,16 +11,37 @@ vi.mock("../src/lib/backend", () => ({
   speak: vi.fn().mockResolvedValue(undefined),
 }));
 
+// App speaks a time-of-day greeting on mount (see src/lib/greeting.ts) after
+// GREETING_DELAY_MS, which briefly puts it in "speaking" before settling
+// back to idle. Every test below fast-forwards through that delay first so
+// assertions aren't racing — or literally waiting seconds on — the mount
+// effect.
+async function renderSettled() {
+  vi.useFakeTimers();
+  render(<App />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(GREETING_DELAY_MS);
+  });
+  vi.useRealTimers();
+  await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
+}
+
 describe("App", () => {
-  it("renders the HUD idle state", () => {
-    render(<App />);
+  it("speaks a time-of-day greeting on mount", async () => {
+    const { speak } = await import("../src/lib/backend");
+    await renderSettled();
+    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+  });
+
+  it("renders the HUD idle state", async () => {
+    await renderSettled();
     expect(screen.getByText("JARVIS")).toBeInTheDocument();
     expect(screen.getByText("Standing by")).toBeInTheDocument();
   });
 
   it("sends typed text through the stub backend and displays the reply", async () => {
     const { getStubResponse, speak } = await import("../src/lib/backend");
-    render(<App />);
+    await renderSettled();
 
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "hello jarvis" },
@@ -33,8 +54,8 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
   });
 
-  it("toggles between the assistant view and the neural map", () => {
-    render(<App />);
+  it("toggles between the assistant view and the neural map", async () => {
+    await renderSettled();
     fireEvent.click(screen.getByTitle("View neural map"));
     expect(screen.getByText("Neural Map")).toBeInTheDocument();
     fireEvent.click(screen.getByTitle("Back to Jarvis"));

@@ -18,9 +18,48 @@ TODO (Step 4, extended in Step 7): implement `main()`. See docs/PLAN.md
 
 from __future__ import annotations
 
+import logging
+
+from dotenv import load_dotenv
+
+from jarvis.config import load_config
+from jarvis.llm.base import ChatMessage
+from jarvis.llm.registry import get_adapter_class
+
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
-    raise NotImplementedError("TODO: Step 4 — see docs/PLAN.md")
+    load_dotenv()
+    config = load_config()
+    logging.basicConfig(level=config.logging.level)
+    # google-genai warns on every call that we're not using its Chat helper —
+    # a style recommendation, not an actual problem for us. Silence it specifically
+    # rather than raising our own app's logging level to hide it.
+    logging.getLogger("google_genai").setLevel(logging.ERROR)
+    adapter_cls = get_adapter_class(config.llm.provider)
+    adapter = adapter_cls.from_config(config.llm)
+
+    history: list[ChatMessage] = []
+
+    while True:
+        try:
+            user_input = input("Say something: ")
+        except EOFError:
+            break
+        if user_input == "/exit":
+            break
+
+        history.append(ChatMessage(role="user", content=user_input))
+        try:
+            response = adapter.chat(history)
+        except Exception as e:
+            logger.error("Chat request failed: %s - try again later", e)
+            continue
+        print(response.content)
+        history.append(ChatMessage(role="assistant", content=response.content))
+
+    #  raise NotImplementedError("TODO: Step 4 — see docs/PLAN.md")
 
 
 if __name__ == "__main__":

@@ -16,4 +16,5 @@ agent:
   enable_example_tools: false # dev-only toggle for tools/examples.py
 
 logging:
-  level: INFO
+  level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces
+                 # noisy third-party library internals too (e.g. every HTTP request)

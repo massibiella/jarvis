@@ -1,17 +1,24 @@
 """Maps a config `provider` string to the adapter class that implements it.
 
-TODO (Step 3): register AnthropicAdapter here once it exists. Adding a new
-provider later means writing one adapter module and adding one line to
-ADAPTER_REGISTRY — nothing else in the app needs to change. See
+Adding a new provider means writing one adapter module and adding one line
+to ADAPTER_REGISTRY — nothing else in the app needs to change. See
 docs/PLAN.md § "LLM adapter (provider-agnostic)".
+
+Status: GeminiAdapter is implemented and registered (plain-message chat
+verified against the real API; tool-calling not yet translated).
+AnthropicAdapter still has an unfinished chat() (see TODOs in that file) —
+left unregistered until it's complete, so `get_adapter_class("anthropic")`
+fails loudly instead of silently returning something broken.
 """
 
 from __future__ import annotations
 
+from jarvis.llm.adapters.gemini_adapter import GeminiAdapter
 from jarvis.llm.base import LLMAdapter
 
 ADAPTER_REGISTRY: dict[str, type[LLMAdapter]] = {
-    # "anthropic": AnthropicAdapter,
+    "gemini": GeminiAdapter,
+    # "anthropic": AnthropicAdapter,  # finish chat() first — see adapters/anthropic_adapter.py
 }
 
 

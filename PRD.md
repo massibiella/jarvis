@@ -13,7 +13,7 @@
 12) Needs to give a daily check-in at night that includes everything relevant to what was done, and what needs to be put off to the next day.
 13) Needs to be able to browse the web and do research on the go.
 14) Needs to be LLM Agnostic (Works with any LLM given a configuration file)
-15) TBD
+15) Needs to be able to tell me how long my commute is going to be
 
 
 

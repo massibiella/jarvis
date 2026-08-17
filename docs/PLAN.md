@@ -135,7 +135,19 @@ class ToolRegistry:
     def as_llm_tool_specs(self) -> list[ToolSpec]: ...
 ```
 
-`tools/schema.py` derives JSON schema from function type hints (str/int/float/bool/Optional/list); unsupported annotations raise clearly rather than guessing. No real feature tools ship here — one gated example tool (`enable_example_tools: true` in config, off by default) exists purely to prove the round trip (Anthropic `tool_use` → execute → `tool_result` → follow-up) works end to end. Because a `Tool` is just name/description/schema/callable, an MCP client added later can register MCP-server tools into the same registry without changing this interface.
+`tools/schema.py` derives JSON schema from function type hints (str/int/float/bool/Optional/list); unsupported annotations raise clearly rather than guessing. Because a `Tool` is just name/description/schema/callable, an MCP client can register MCP-server tools into the same registry without changing this interface.
+
+**Update (from discussion): the MCP client isn't deferred — it's the plan for the first real tools.** Original scope had a throwaway example tool proving the plumbing works, then real tools added later as plain Python functions. Decision now: skip the throwaway tool (removed `tools/examples.py`) and prove the registry directly with real MCP-sourced tools — see "MCP integrations" below.
+
+## MCP integrations (target list, tackle one at a time — user writes the code)
+
+Three target integrations, in this order (easiest first — the later two need Google OAuth, which is real setup friction similar to what we hit with API keys/billing; weather needs none):
+
+1. **Weather** — no auth needed. Check whether a trustworthy existing MCP weather server exists before building one; if not, a small custom MCP server wrapping [Open-Meteo](https://open-meteo.com) (free, no API key) is a reasonable and genuinely educational fallback — mirrors the "write your own MCP server" pattern already called out for IBKR.
+2. **Google Calendar** — PRD item 1. Needs Google OAuth setup; check for an existing community/official MCP server first rather than hand-rolling OAuth.
+3. **Google Maps / traffic (commute time)** — PRD item 15 (added this session). Also needs Google OAuth/API access; same "find an existing server first" approach.
+
+For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used for the Gemini adapter. None of these are designed yet — do that when we get to each one, not now.
 
 ## Memory (index + on-demand recall)
 

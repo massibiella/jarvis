@@ -9,8 +9,10 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp config/config.example.yaml config.yaml
-export ANTHROPIC_API_KEY=sk-...
+export GEMINI_API_KEY=...
 ```
+
+Alternatively, put `GEMINI_API_KEY=...` in a `.env` file at the repo root — `jarvis` loads it automatically on startup. See .env.example.
 
 ## Development
 

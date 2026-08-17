@@ -2,9 +2,9 @@
 # config.yaml is gitignored — never commit real API keys or personal paths.
 
 llm:
-  provider: anthropic
-  model: claude-opus-5
-  api_key_env: ANTHROPIC_API_KEY # name of the env var holding the key — never the key itself
+  provider: gemini
+  model: gemini-flash-lite-latest
+  api_key_env: GEMINI_API_KEY # name of the env var holding the key — never the key itself
   max_tokens: 4096
 
 memory:

@@ -70,7 +70,7 @@ jobs:
           }')
 
           # Send to Gemini API endpoint
-          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent" \
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
             -H "content-type: application/json" \
             -H "x-goog-api-key: $GEMINI_API_KEY" \
             -d "$JSON_PAYLOAD")

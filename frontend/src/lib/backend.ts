@@ -54,7 +54,7 @@ export async function speak(text: string): Promise<void> {
     audioEl.addEventListener("ended", onEnded);
     audioEl.addEventListener("error", onError);
     audioEl.src = url;
-    void audioEl.play();
+    audioEl.play().catch(onError);
   });
 }
 

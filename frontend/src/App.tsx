@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "./components/Orb";
 import { MindMap } from "./components/MindMap";
 import { audioEngine, useSpeechRecognition } from "./lib/voice";
@@ -25,6 +25,16 @@ export default function App() {
   const { isSupported, isListening, transcript, interimTranscript, start, stop } =
     useSpeechRecognition();
 
+  // Recognition can end on its own (silence timeout, browser cutoff, error)
+  // without going through handleMicToggle — catch that drift and tear the
+  // mic + UI state down instead of leaving a hot mic and a stale "Listening…".
+  useEffect(() => {
+    if (!isListening && state === "listening") {
+      audioEngine.disconnectMic();
+      setState("idle");
+    }
+  }, [isListening, state]);
+
   // ---- Core loop: user text -> stub "reasoning" -> Piper TTS -> Orb reacts ----
   const respond = useCallback(async (userText: string) => {
     if (!userText.trim() || busyRef.current) return;
@@ -49,6 +59,7 @@ export default function App() {
     if (isListening) {
       stop();
       audioEngine.disconnectMic();
+      setState("idle");
       return;
     }
     try {

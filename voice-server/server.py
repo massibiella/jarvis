@@ -25,7 +25,7 @@ MODEL_DIR = Path(__file__).parent / "models"
 MODEL_PATH = MODEL_DIR / "en_GB-alan-medium.onnx"
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
 if not MODEL_PATH.exists():
     raise FileNotFoundError(

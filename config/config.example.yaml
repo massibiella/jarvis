@@ -13,7 +13,6 @@ memory:
 
 agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
-  enable_example_tools: false # dev-only toggle for tools/examples.py
 
 logging:
   level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces

@@ -15,9 +15,6 @@ memory:
   root_dir: ./data/memory
   user_id: default
 
-agent:
-  enable_example_tools: true
-
 logging:
   level: DEBUG
 """
@@ -33,7 +30,6 @@ def test_load_valid_config(tmp_path: Path) -> None:
     assert config.llm.model == "claude-opus-5"
     assert config.llm.max_tokens == 2048
     assert config.memory.user_id == "default"
-    assert config.agent.enable_example_tools is True
     assert config.logging.level == "DEBUG"
 
 

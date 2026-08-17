@@ -59,7 +59,6 @@ class MemoryConfig:
 @dataclass
 class AgentConfig:
     system_prompt_file: Path | None = None
-    enable_example_tools: bool = False
 
 
 @dataclass
@@ -108,7 +107,6 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
     prompt_file = data.get("system_prompt_file")
     return AgentConfig(
         system_prompt_file=Path(prompt_file).expanduser() if prompt_file else None,
-        enable_example_tools=data.get("enable_example_tools", False),
     )
 
 

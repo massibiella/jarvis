@@ -196,7 +196,6 @@ memory:
 
 agent:
   system_prompt_file: null
-  enable_example_tools: false
 
 logging:
   level: INFO

@@ -17,8 +17,6 @@ TODO (Step 4, extended in Step 7): implement `main()`. See docs/PLAN.md
 
 from __future__ import annotations
 
-from dotenv import load_dotenv
-
 import asyncio
 import logging
 

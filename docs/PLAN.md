@@ -14,6 +14,17 @@ This is a learning project as much as a build. This plan file lives in the repo 
 
 **Split:** steps 1–2 (scaffolding + config loading) are implemented as a worked example of the patterns (package layout, dataclass config, error handling, test structure) — see `src/jarvis/config.py` and `tests/test_config.py`. From step 3 onward (LLM adapter, CLI loop, tool registry, memory + recall), the corresponding files are stubs with docstrings and `TODO` markers pointing back to this plan — you and Adnan write the actual logic there.
 
+## Completed
+
+Kept short and moved here so the rest of the plan stays about what's left, not what's done. Full design rationale for each still lives in its own section below.
+
+- **Scaffolding** (Step 1) — package layout, `pyproject.toml`, ruff config.
+- **Config loading** (Step 2) — `src/jarvis/config.py` + `config/config.example.yaml` + `tests/test_config.py`; extended since with the `mcp_servers` section (see "MCP client" below).
+- **LLM adapter — Gemini** (Step 3, provider pivot) — original plan targeted Anthropic first; pivoted to Gemini (free tier, see "Key decisions") since it doesn't need paid billing. `src/jarvis/llm/adapters/gemini_adapter.py`, verified end-to-end including multi-turn history. `anthropic_adapter.py` is an unfinished stub, deferred until there's a reason to pay for Anthropic API access — not blocking anything.
+- **Bare CLI loop** (Step 4) — `src/jarvis/cli.py`: config → adapter → `input()` loop, manually verified against the live Gemini API.
+- **Async conversion** — `cli.py`'s `main()`, `Agent.step`, `ToolRegistry.execute` are all `async def` now, done ahead of the MCP client landing so it doesn't need retrofitting — see "MCP client" section for the reasoning.
+- **weather-mcp** — standalone MCP server, separate repo ([github.com/massibiella/weather-mcp](https://github.com/massibiella/weather-mcp)). One tool, `get_current_weather`, via Open-Meteo; tested, documented. Not yet consumed by Jarvis — that's the MCP client, Step 5b below.
+
 ## Key decisions (from discussion)
 
 1. **No agent framework for the loop.** Hand-write the tool-calling loop (~40-80 lines) directly on the Anthropic SDK, behind a provider-agnostic adapter interface. Rationale: fewer layers to debug through while learning, keeps "LLM-agnostic" honest (a thin custom interface, not a framework's provider abstraction), and the loop is small enough that swapping in LangGraph later is a localized rewrite of one module, not a restart — the LLM adapter, tool registry, memory store, and CLI all survive that swap untouched.
@@ -151,6 +162,38 @@ For each: confirm a real MCP server (existing or hand-built) before writing any 
 
 **Transport (from discussion):** MCP servers we launch ourselves (like `weather-mcp`) start on **stdio transport** — Jarvis spawns the server as a subprocess via a command in config (e.g. `mcp_servers.weather.command: [...]`). This means the server's code must be physically present on whatever machine runs Jarvis; that's an accepted coupling for now since Jarvis runs locally on one machine. If Jarvis and its MCP servers ever need to live on separate machines (e.g. Jarvis on an always-on home server, servers elsewhere), MCP also supports **SSE/HTTP transport** — the server runs as its own persistent process and Jarvis's client connects via URL instead of spawning it. Not needed yet; revisit only when there's an actual reason to split hosts.
 
+### MCP client (`tools/mcp_client.py`) — connects Jarvis to servers like `weather-mcp`
+
+One instance per entry in `config.mcp_servers`. Shape:
+
+```python
+class MCPToolClient:
+    """Wraps one MCP server subprocess: discovers its tools, calls them on demand."""
+
+    def __init__(self, name: str, command: list[str]) -> None: ...
+
+    async def connect(self) -> None:
+        """Launch the subprocess (mcp.client.stdio.stdio_client) and open
+        an mcp.ClientSession over it."""
+
+    async def list_tools(self) -> list[ToolSpec]:
+        """Ask the server what tools it has (MCP's own list_tools()); translate
+        each into our ToolSpec (name/description/parameters) — same shape
+        native Python tools use, so ToolRegistry doesn't need to know the
+        difference."""
+
+    async def call_tool(self, name: str, arguments: dict) -> str:
+        """Invoke a tool on this server, return its result as a string."""
+
+    async def close(self) -> None: ...
+```
+
+Wiring at startup (`cli.py`, alongside building `ToolRegistry`): for each `config.mcp_servers` entry, build an `MCPToolClient`, `connect()`, `list_tools()`, then register each discovered tool into `ToolRegistry` with `func` set to a small wrapper that forwards to `client.call_tool(tool_name, kwargs)`. `agent.py` and `ToolRegistry.execute()` never need to know a given tool actually lives in another process — same "MCP-ready without an MCP-specific interface" idea `Tool` was already designed around.
+
+**Known wrinkle, resolved (from discussion):** the MCP SDK's client side is fully `async` (`ClientSession`, `stdio_client`). The tempting shortcut — connect once, then call `asyncio.run(client.call_tool(...))` per invocation — is actually broken: `asyncio.run()` opens a new event loop each call and tears it down when it returns, but a `ClientSession`/subprocess opened in one loop isn't valid to reuse from a different loop (asyncio resources are loop-affine). So either reconnect the subprocess on every tool call (correct, but pays subprocess-startup cost each time — wasteful once there's more than one server or tools get called often), or make the loop properly `async` end-to-end.
+
+**Decision: go async end-to-end. [done]** `cli.py`'s `main()` is `async def`, run via `asyncio.run(main())` at the very bottom; `input()` and `adapter.chat()` calls are wrapped in `asyncio.to_thread` so they don't block the loop. `Agent.step` and `ToolRegistry.execute` are `async def` (still stubs, Steps 5/6, but with the right signature now). The MCP connection will open once at startup and stay alive for the process's life, same as any normal MCP client app, once Step 5b implements it. `LLMAdapter.chat()` implementations didn't need to become async themselves — called via `asyncio.to_thread(adapter.chat, ...)`.
+
 ## Memory (index + on-demand recall)
 
 ```
@@ -213,12 +256,11 @@ logging:
 
 ## Suggested implementation order (each step independently testable)
 
-1. **Scaffolding** — `pyproject.toml`, package skeleton, ruff config, empty `tests/`. Verify: `pip install -e .`, `ruff check .`, `python -c "import jarvis"`. **[done]**
-2. **Config loading** — `config.py` + `config.example.yaml`. Tests: valid load, missing env var, missing file, resolution order. **[done]**
-3. **LLM adapter, Anthropic only** — no tools/memory yet. Mocked unit test (monkeypatch `anthropic.Anthropic().messages.create`) for message/tool-spec translation; one manual smoke test against the real API. **[your turn]**
-4. **Bare CLI loop** — adapter wired into `cli.py`, empty tools, no memory. Manual interactive test.
+Steps 1-4 are done — see "Completed" above.
+
 5. **Tool registry** — schema derivation + execute/error paths + shape tests.
-6. **Wire tools into Agent** — implement the tool-call loop in `agent.py`; add the gated example tool. Automated test via a scripted `FakeAdapter` (tool_use → end_turn), no network.
+5b. **MCP client** — implement `tools/mcp_client.py` against `weather-mcp`; wire discovered tools into `ToolRegistry`. See "MCP client" section below.
+6. **Wire tools into Agent** — implement the tool-call loop in `agent.py`. Automated test via a scripted `FakeAdapter` (tool_use → end_turn), no network.
 7. **Memory store + recall** — frontmatter read/write, index, `search`; wire index into system prompt; add `list_memory`/`read_memory`/`search_memory` tools; wire `/remember`. Tests: write-then-read round trip, index generation, search over sample files.
 8. **Polish** — clean error surfacing in the CLI, logging, README.
 9. **End-to-end verification** (below) + final `pytest` / `ruff check` / `ruff format --check` pass.

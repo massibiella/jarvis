@@ -17,6 +17,7 @@ TODO (Step 4, extended in Step 7): implement `main()`. See docs/PLAN.md
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from dotenv import load_dotenv
@@ -28,7 +29,7 @@ from jarvis.llm.registry import get_adapter_class
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
+async def main() -> None:
     load_dotenv()
     config = load_config()
     logging.basicConfig(level=config.logging.level)
@@ -43,7 +44,7 @@ def main() -> None:
 
     while True:
         try:
-            user_input = input("Say something: ")
+            user_input = await asyncio.to_thread(input, "Say something: ")
         except EOFError:
             break
         if user_input == "/exit":
@@ -51,7 +52,7 @@ def main() -> None:
 
         history.append(ChatMessage(role="user", content=user_input))
         try:
-            response = adapter.chat(history)
+            response = await asyncio.to_thread(adapter.chat, history)
         except Exception as e:
             history.pop() # needed since if the .chat() call fails, the loop would continue to append another 'user' message, which would cause issues.
             logger.error("Chat request failed: %s - try again later", e)
@@ -61,4 +62,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

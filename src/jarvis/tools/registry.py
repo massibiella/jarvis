@@ -5,6 +5,11 @@ TODO (Step 5): implement `register`, `execute`, `as_llm_tool_specs`.
 Designed so an MCP client can add MCP-server tools into the same registry
 later without changing this interface — see docs/PLAN.md
 § "Tool registry (MCP-ready)".
+
+`execute` is async (native tool functions are still plain sync/async
+callables you can `await` either way) so MCP-backed tools can `await
+client.call_tool(...)` without a nested event loop — see docs/PLAN.md
+§ "MCP client" for why a sync `execute` doesn't work for those.
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ class ToolRegistry:
         """
         raise NotImplementedError("TODO: Step 5 — see docs/PLAN.md")
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> str:
+    async def execute(self, name: str, arguments: dict[str, Any]) -> str:
         """Look up the tool by name and call it with `arguments`.
 
         Let unknown-tool-name and call errors propagate — the agent loop

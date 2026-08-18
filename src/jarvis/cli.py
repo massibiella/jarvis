@@ -54,7 +54,8 @@ async def main() -> None:
         try:
             response = await asyncio.to_thread(adapter.chat, history)
         except Exception as e:
-            history.pop() # needed since if the .chat() call fails, the loop would continue to append another 'user' message, which would cause issues.
+            history.pop()   # needed since if the .chat() call fails, the loop would continue to append
+                            # another 'user' message, which would cause issues.
             logger.error("Chat request failed: %s - try again later", e)
             continue
         print(response.content)

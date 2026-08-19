@@ -22,6 +22,13 @@ from jarvis.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
+# Hard cap on tool-call round trips within one step() call — without this,
+# a model stuck repeatedly retrying a failing tool (or any other loop that
+# never settles on a plain-text answer) would run forever, one API call
+# after another, with nothing to stop it.
+_MAX_TOOL_ITERATIONS = 10
+
+
 class Agent:
     def __init__(
         self,
@@ -41,7 +48,7 @@ class Agent:
     async def step(self, user_text: str) -> str:
         self.history.append(ChatMessage(role="user", content=user_text))
 
-        while True:
+        for _ in range(_MAX_TOOL_ITERATIONS):
             try:
                 response = await asyncio.to_thread(
                     self.adapter.chat,
@@ -74,4 +81,10 @@ class Agent:
 
                 self.history.append(
                     ChatMessage(role="tool", tool_call_id=tool_call.id, content=result)
-                ) 
+                )
+
+        logger.error(
+            "step() hit the %d-iteration tool-call cap without a plain-text answer",
+            _MAX_TOOL_ITERATIONS,
+        )
+        return "Sorry, I got stuck trying to use tools and couldn't come up with an answer."

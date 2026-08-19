@@ -23,11 +23,23 @@ import logging
 from dotenv import load_dotenv
 
 from jarvis.config import load_config
-from jarvis.llm.base import ChatMessage
+from jarvis.llm.base import ChatMessage, ToolSpec
 from jarvis.llm.registry import get_adapter_class
+from jarvis.tools.mcp_client import MCPToolClient
+from jarvis.tools.registry import Tool
 
 logger = logging.getLogger(__name__)
 
+def _mcp_tool_to_tool(client: MCPToolClient, tool_spec: ToolSpec) -> Tool:
+    async def call(**kwargs):
+        return await client.call_tool(tool_spec.name, kwargs)
+
+    return Tool(
+        name=tool_spec.name,
+        description=tool_spec.description,
+        parameters=tool_spec.parameters,
+        func=call,
+    )
 
 async def _main() -> None:
     load_dotenv()
@@ -54,8 +66,8 @@ async def _main() -> None:
         try:
             response = await asyncio.to_thread(adapter.chat, history)
         except Exception as e:
-            history.pop()   # needed since if the .chat() call fails, the loop would continue to append
-                            # another 'user' message, which would cause issues. Need to handle latest request not being the one that failed
+            history.pop()   # needed since if the .chat() call fails, the loop would continue to
+                            # append another 'user' message, which would cause issues.
             logger.error("Chat request failed: %s - try again later", e)
             continue
         print(response.content)

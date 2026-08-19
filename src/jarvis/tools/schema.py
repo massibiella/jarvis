@@ -1,18 +1,15 @@
 """Derives a JSON schema for a tool's parameters from its function signature.
 
-TODO (Step 5): implement `build_schema_from_signature`. Support at least
-str / int / float / bool / Optional[...] / list[...] annotations; a
-parameter with no default is `required`. Raise a clear error (don't
-guess) for any annotation type you don't handle — better to fail loudly
-when someone writes a tool with an unsupported type than to silently
-send the model a wrong schema. See docs/PLAN.md § "Tool registry
-(MCP-ready)".
+Supports str/int/float/bool annotations; a parameter with no default is
+`required`. Optional[...]/list[...] annotations aren't handled yet — an
+unsupported annotation raises KeyError (fails loudly rather than sending
+the model a wrong schema), but that error isn't a purpose-built message
+yet. See docs/ARCHITECTURE.md for how this fits into the rest of `tools/`.
 """
 
 from __future__ import annotations
 
 import inspect
-
 from collections.abc import Callable
 from typing import Any
 

@@ -21,10 +21,14 @@ TODO (Step 6): implement `Agent.step()`. See docs/PLAN.md § "CLI chat loop":
 
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from jarvis.llm.base import ChatMessage, LLMAdapter
 from jarvis.memory.store import MemoryStore
 from jarvis.tools.registry import ToolRegistry
 
+logger = logging.getLogger(__name__)
 
 class Agent:
     def __init__(
@@ -41,4 +45,39 @@ class Agent:
         self.system_prompt = system_prompt
 
     async def step(self, user_text: str) -> str:
-        raise NotImplementedError("TODO: Step 6 — see docs/PLAN.md")
+        self.history.append(ChatMessage(role="user", content=user_text))
+
+        while True:
+            try:
+                response = await asyncio.to_thread(
+                    self.adapter.chat,
+                    self.history,
+                    self.tools.as_llm_tool_specs(),
+                    system=self.system_prompt,
+                )
+            except Exception as e:
+                self.history.pop()
+                logger.error(
+                    "An error was encountered while waiting for a response from the model: %s", e
+                )
+                return "Sorry, something went wrong talking to the model."
+
+            if not response.tool_calls:
+                self.history.append(ChatMessage(role="assistant", content=response.content))
+                return response.content
+
+            self.history.append(
+                ChatMessage(
+                    role="assistant", content=response.content, tool_calls=response.tool_calls
+                )
+            )
+
+            for tool_call in response.tool_calls:
+                try:
+                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                except Exception as e:
+                    result = f"Error running tool {tool_call.name}: {e}"
+
+                self.history.append(
+                    ChatMessage(role="tool", tool_call_id=tool_call.id, content=result)
+                ) 

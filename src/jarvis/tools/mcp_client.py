@@ -1,12 +1,14 @@
 """MCP client: connects Jarvis to tool servers like weather-mcp.
 
-TODO (Step 5b, after ToolRegistry): implement `connect`, `list_tools`,
-`call_tool`, `close`. One MCPToolClient per entry in config.mcp_servers;
-discovered tools get registered into ToolRegistry as if they were native
-Python tools. See docs/PLAN.md § "MCP client (tools/mcp_client.py)" for
-the full design. Everything here is already async on purpose — connect()
-opens the connection once and it stays alive inside the app's single
-event loop (see cli.py's asyncio.run(main())); don't reconnect per call.
+One MCPToolClient per entry in config.mcp_servers; discovered tools get
+registered into ToolRegistry as if they were native Python tools (see
+docs/ARCHITECTURE.md § "Components"). Everything here is async on
+purpose — connect() opens the connection once and it's meant to stay
+alive inside the app's single event loop for the process's life; don't
+reconnect per call (asyncio resources are loop-affine — see docs/PLAN.md
+§ "Key decisions" for why `asyncio.run()` per call doesn't work here).
+Verified end-to-end against the real weather-mcp server. Not yet wired
+into cli.py/Agent — that's still open, see docs/PLAN.md.
 """
 import logging
 from contextlib import AsyncExitStack

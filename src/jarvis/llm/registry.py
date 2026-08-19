@@ -2,7 +2,7 @@
 
 Adding a new provider means writing one adapter module and adding one line
 to ADAPTER_REGISTRY — nothing else in the app needs to change. See
-docs/PLAN.md § "LLM adapter (provider-agnostic)".
+docs/ARCHITECTURE.md § "Components" for the full LLMAdapter picture.
 
 Status: GeminiAdapter is implemented and registered (plain-message chat
 verified against the real API; tool-calling not yet translated).

@@ -1,15 +1,15 @@
 """Tool registration: turns a Python function into something the LLM
 adapter can offer to the model, and the agent can execute by name.
 
-TODO (Step 5): implement `register`, `execute`, `as_llm_tool_specs`.
 Designed so an MCP client can add MCP-server tools into the same registry
-later without changing this interface — see docs/PLAN.md
-§ "Tool registry (MCP-ready)".
+without changing this interface — MCPToolClient does exactly this via
+add_tool(). See docs/ARCHITECTURE.md § "Components" for the full picture.
 
 `execute` is async (native tool functions are still plain sync/async
-callables you can `await` either way) so MCP-backed tools can `await
-client.call_tool(...)` without a nested event loop — see docs/PLAN.md
-§ "MCP client" for why a sync `execute` doesn't work for those.
+callables you can `await` either way, see the isawaitable check below)
+so MCP-backed tools can `await client.call_tool(...)` directly, inside
+the app's single event loop, instead of needing a nested `asyncio.run()`
+per call — see docs/PLAN.md § "Key decisions" for why that breaks.
 """
 
 from __future__ import annotations

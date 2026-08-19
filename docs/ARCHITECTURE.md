@@ -17,9 +17,10 @@ jarvis (console script)
         MCPToolClient(...).connect() + list_tools()  [src/jarvis/tools/mcp_client.py]
         → each discovered tool wrapped (_mcp_tool_to_tool) and
           registered into a ToolRegistry                [src/jarvis/tools/registry.py]
-    → MemoryStore(...) built (constructed only — nothing calls its methods yet)
+    → MemoryStore(...) built + register_memory_tools(tools, memory)  [tools/memory_tools.py]
     → system prompt loaded (system_prompt.md, or config.agent.system_prompt_file if set)
     → Agent(adapter, tools, memory, system_prompt) built  [src/jarvis/agent.py]
+      → Agent.__init__ appends memory.load_index() to the system prompt
     → loop:
         input("you> ") → await agent.step(user_input) → print result
     → on any exit path (clean /exit, EOF, or a crash): every MCPToolClient is closed
@@ -47,8 +48,9 @@ jarvis/
 │   ├── tools/
 │   │   ├── schema.py                    # build_schema_from_signature(): inspect.signature -> JSON schema
 │   │   ├── registry.py                  # ToolRegistry: register/add_tool/execute/as_llm_tool_specs
-│   │   └── mcp_client.py                # MCPToolClient: talks to one MCP server over stdio
-│   └── memory/store.py                  # MemoryStore — stub, not implemented
+│   │   ├── mcp_client.py                # MCPToolClient: talks to one MCP server over stdio
+│   │   └── memory_tools.py              # remember/list_memory/read_memory/search_memory, wrapping MemoryStore
+│   └── memory/store.py                  # MemoryStore: read/write/append/load_index/search
 └── tests/test_config.py                 # only module with automated tests so far
 ```
 
@@ -67,12 +69,14 @@ jarvis/
 
 **System prompt (`system_prompt.md`)** — the built-in default, loaded by `cli.py`'s `_load_system_prompt()`; `config.agent.system_prompt_file`, if set, overrides it with a different file instead.
 
-**Memory (`memory/store.py`)** — designed (markdown + YAML frontmatter, one dir per `user_id`, an index loaded into the system prompt plus on-demand `read`/`search` tools) but not implemented — every method still raises. `cli.py` constructs a `MemoryStore` and hands it to `Agent`, but nothing calls any of its methods yet.
+**Memory (`memory/store.py` + `tools/memory_tools.py`)** — markdown files with YAML frontmatter, one dir per `user_id`, under `config.memory.root_dir`. `MemoryStore`: `read`/`write`/`append` (all implemented and tested — `write` always emits the `---`/`---` structure so `read()` can always parse it back, and creates missing parent directories; `append` reads the existing entry or falls back to an empty one via `except FileNotFoundError`, preserving existing frontmatter unchanged); `load_index()` globs `memory_*.md` and pulls each file's `description` from its own frontmatter — no separate manually-maintained index file, so it can't drift out of sync; `search()` is plain substring matching, no embeddings.
+
+Files aren't freely named by the model — writes go through `tools/memory_tools.py`'s `remember(category, text)` tool, restricted to a small fixed set of categories (`facts`, `preferences`), each with a description written once in code (`_CATEGORY_DESCRIPTIONS`), not invented per-call by the model. This was a deliberate choice (see `PLAN.md`'s "Memory" section) — an undescribed file is invisible to the model's own reasoning about what's worth reading, and free-form category creation makes that hard to guarantee. `list_memory`/`read_memory`/`search_memory` are the read-side counterparts, thin wrappers over the same store. `Agent.__init__` appends `memory.load_index()` to the system prompt at startup, so the model always knows what's been remembered without loading full contents by default.
 
 **weather-mcp** — not part of this repo. A separate, standalone MCP server ([github.com/massibiella/weather-mcp](https://github.com/massibiella/weather-mcp)) exposing one tool, `get_current_weather`, via the Open-Meteo API. Runs as its own subprocess, launched by `MCPToolClient` per the `mcp_servers.weather` entry in `config.yaml`.
 
 ## Known gaps (today, not a roadmap — see PLAN.md for that)
 
-- `MemoryStore` is fully unimplemented — nothing persists across sessions yet, and there's no `/remember` command or recall tools.
-- `ToolRegistry.register()` (the native-Python-tool decorator path) has no real tool using it yet — only `add_tool()` (the MCP path) is exercised by the running app.
 - `AnthropicAdapter` is unfinished and unregistered — Gemini is the only usable provider today.
+- No auto-summarization of a session into memory — the agent only remembers what it explicitly decided to save *during* a conversation via `remember`; nothing catches things it didn't flag in the moment, and nothing persists once `jarvis` exits unless `remember` was actually called (see `TODO.md`'s "Nice to have").
+- `sessions/` (dated, per-session notes) from the original memory design sketch was never built — only the two fixed categories (`facts`, `preferences`) exist.

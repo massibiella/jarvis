@@ -33,35 +33,43 @@ Weather is done (see `ARCHITECTURE.md`). Two more targets, in order (both need G
 
 For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project. Neither is designed yet.
 
-## Memory (index + on-demand recall) — not yet built, Step 7
+## Memory (index + on-demand recall)
+
+**Decision (from discussion): the agent writes memory itself, via a tool — not the user, and not through a manually-curated `index.md`.** Originally sketched as a user-triggered `/remember` CLI command plus a hand-maintained `index.md`; reconsidered because a human was never actually going to be the one deciding what's worth remembering — the whole point was the *agent* judging that during a conversation. That reframing also killed the manually-maintained `index.md` idea: if the agent can invent arbitrary new topics/files as it goes, nobody's around to write a good description for each one, and an undescribed file is invisible to the agent's own future reasoning (can't decide something's relevant if the index gives no signal about what's in it). Fixed by constraining the agent to a **small, fixed set of categories** (not free-form file/topic creation) — each category's description only needs writing once, by a human, in code — and deriving the index automatically from what's actually on disk, rather than trusting anyone to keep a separate file in sync.
 
 ```
 data/memory/
-├── index.md                      # file list + one-line descriptions; loaded into system prompt at startup
 └── users/default/
-    ├── facts.md
-    ├── preferences.md
-    └── sessions/                  # optional dated notes
+    ├── memory_facts.md          # durable facts about the user
+    ├── memory_preferences.md    # communication/style preferences
+    └── sessions/                 # optional dated notes, not built
 ```
 
-Each file: YAML frontmatter (`title`, `tags`, `updated_at`) + markdown body. Frontmatter parsed with a `---` split + `yaml.safe_load` (PyYAML — already used by `config.py`).
+Each file: YAML frontmatter (`title`, `description`, ...) + markdown body. Frontmatter parsed with a `---` split + `yaml.safe_load` (PyYAML — already used by `config.py`). `description` in each file's frontmatter is what `load_index()` surfaces — see below.
 
-`MemoryStore` (see `src/jarvis/memory/store.py` for the exact method signatures — already stubbed) needs: `read`/`write`/`append` on a single file under `users/<user_id>/`; `load_index()` returning just the index (not full file contents) for the system prompt; `search()` as plain keyword/grep, no embeddings.
+`MemoryStore` (`src/jarvis/memory/store.py`) — **all five methods done, implemented, tested:**
+- `read`/`write`/`append` — `write` always emits the `---`/`---` structure even for an empty/`None` frontmatter, so `read()` can always parse it back; `write` also creates missing parent directories, since nothing else does; `append` takes an optional `default_frontmatter`, used only the first time a file is created (so a category's description gets set on creation, not lost or left blank) — an existing file's frontmatter is always preserved as-is on later appends.
+- `load_index()` — globs `user_dir` for `memory_*.md`, `read()`s each one, pulls `.frontmatter.get("description", "(no description)")`, returns a formatted list. No separate `index.md` file — the index is *derived* from the real files every time, so it can't drift out of sync.
+- `search()` — plain substring match over file contents, no embeddings.
 
-Wiring, once implemented:
+**Tools** (`src/jarvis/tools/memory_tools.py`, not `cli.py` — same reasoning as MCP tools living in their own file, not inline in the entry point) — **all done:**
+- `remember(category: str, text: str) -> str` — `category` restricted to `"facts"` / `"preferences"`, enforced two ways: the docstring tells the model, and the function body validates against `_CATEGORY_DESCRIPTIONS` at runtime, returning a clear error instead of writing anything if an unknown category slips through (`tools/schema.py` doesn't support `Literal` yet, so this can't be enforced at the schema level — the runtime check is the actual guarantee). Calls `memory.append(f"memory_{category}.md", text, default_frontmatter=...)`, where the frontmatter (including `description`) for each category is a fixed dict written once in `memory_tools.py` (`_CATEGORY_DESCRIPTIONS`), not invented by the model per call.
+- `list_memory()` / `read_memory(path)` / `search_memory(query)` — thin wrappers around `MemoryStore`.
+
+Wiring — **done:**
 - **Startup**: `Agent.__init__` appends `memory.load_index()` to the system prompt.
-- **Write path**: explicit `/remember <text>` CLI command → `memory.append("facts.md", text)`.
-- **Recall path**: register `recall` tool(s) in `ToolRegistry` — `list_memory()`, `read_memory(path)`, `search_memory(query)` — thin wrappers around `MemoryStore`, so the agent can pull a specific file's content into context only when actually needed.
+- `system_prompt.md` tells the model the `remember` tool exists and when to use it (durable info worth recalling later, not one-off conversational context).
 
 `users/default/` is the multi-user-ready layout from Key Decisions above; no auth logic in this milestone.
 
+**Real bug found and fixed along the way:** `tools/schema.py` broke on any native tool defined in a module using `from __future__ import annotations` (true for nearly every file in this project) — `param.annotation` becomes a plain string (e.g. `'str'`) under PEP 563's deferred evaluation, not the actual type object, so a direct `_PYTHON_TO_JSON_TYPES[param.annotation]` lookup raised `KeyError`. This had never surfaced before because every native tool tested so far lived in a throwaway script without that import. Fixed by using `typing.get_type_hints(func)` instead of raw signature annotations — resolves deferred string annotations back into real type objects regardless of the defining module's own imports.
+
 ## Suggested implementation order (each step independently testable)
 
-Steps 1–6 are done — see `ARCHITECTURE.md` for current state. `jarvis` runs end-to-end today: real config, real MCP tool (weather), real tool-calling loop, verified live.
+Steps 1–7 are done — see `ARCHITECTURE.md` for current state. `jarvis` runs end-to-end today: real config, real MCP tool (weather), real tool-calling loop, real persistent memory (agent-driven, not user-triggered), all verified live.
 
-7. **Memory store + recall** — see "Memory" section above. Tests: write-then-read round trip, index generation, search over sample files. `/remember <text>` CLI command once `MemoryStore` exists.
 8. **Polish** — clean error surfacing in the CLI, logging, README.
-9. **End-to-end verification** (below) + final `pytest` / `ruff check` / `ruff format --check` pass.
+9. **End-to-end verification** (below) + final `pytest` / `ruff check` / `ruff format --check` pass — automated tests for `MemoryStore`/`memory_tools.py` still to write (manual/scripted verification only so far).
 
 ## Verification
 
@@ -70,15 +78,15 @@ Steps 1–6 are done — see `ARCHITECTURE.md` for current state. `jarvis` runs 
 $ jarvis
 you> what's the weather in Boston?
 jarvis> [agent calls get_current_weather via MCPToolClient, answers correctly]   ✅ verified
-you> /remember I'm doing a 12-week Spanish study plan, currently on week 3
-jarvis> Noted.
+you> I'm doing a 12-week Spanish study plan, currently on week 3
+jarvis> Noted.   [agent decided on its own to call remember(category="facts", ...)]  ✅ verified
 you> what am I working on right now?
-jarvis> [agent uses recall/search_memory to find the note, answers correctly]
+jarvis> [agent uses list_memory/read_memory to find the note, answers correctly]  ✅ verified
 you> /exit
 ```
-The weather exchange above is real and already verified live. The `/remember`/recall exchange is the remaining target — confirm `data/memory/users/default/facts.md` contains the note and `index.md` reflects it once Step 7 is done.
+All three exchanges above are real and verified live — memory is agent-driven, there's no `/remember` command (see "Memory" section above for why that changed from the original plan).
 
-**Automated tests (pytest):** memory read/write/index/search round trips; `FakeAdapter`-driven agent loop test with zero network calls.
+**Automated tests (pytest):** still to write — memory read/write/append/index/search round trips (only manually/scripted-verified so far); `FakeAdapter`-driven agent loop test with zero network calls.
 
 **Acceptance gate:** `pytest` and `ruff check . && ruff format --check .` both clean.
 
@@ -107,4 +115,5 @@ Not a problem today — `cli.py`'s loop is strictly sequential (`input()` blocks
 **Direction to take when this becomes real, not decided now:** serialize access per `Agent`/conversation — e.g. an `asyncio.Lock` so a second incoming message queues behind the first `step()` call instead of running concurrently, rather than trying to make concurrent history mutation itself safe.
 
 ## Remaining files
-- `src/jarvis/memory/store.py` — not started, the only unfinished piece of Milestone 1
+
+None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory) and the two "Future step" sections above, both deliberately deferred.

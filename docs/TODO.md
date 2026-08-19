@@ -8,7 +8,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR
 - [ ] Newsletter updates (investments + interest categories)
-- [ ] Memory files (persistent, cross-session) — designed (index + on-demand recall), not implemented yet
+- [x] Memory files (persistent, cross-session) — `MemoryStore` fully implemented (read/write/append/load_index/search) and wired into `Agent`/`cli.py`. Agent has `remember`/`list_memory`/`read_memory`/`search_memory` tools and decides on its own when something's worth remembering, restricted to two categories (facts, preferences) — see `PLAN.md` for why. Verified live end-to-end.
 - [ ] JARVIS-style frontend
 - [ ] Multi-user auth — memory layout is already auth-ready (`users/<user_id>/`), auth itself not built
 - [ ] Security — ongoing, no dedicated pass yet
@@ -20,3 +20,4 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 ## Nice to have
 - [ ] Mobile connection (e.g. message the user via Telegram)
 - [ ] GraphDB for facts and relationships. Other ideas?
+- [ ] Auto-summarize a session into MemoryStore on exit (or periodically) — the agent can already decide *during* a conversation that something's worth remembering (via the `remember` tool), but nothing catches things it didn't explicitly flag in the moment. Different problem from the in-session compaction note in PLAN.md (that's about one long conversation not overflowing context; this is about remembering *across* separate runs of `jarvis`).

@@ -1,18 +1,14 @@
 """Entry point: `jarvis` on the command line.
 
-TODO (Step 4, extended in Step 7): implement `main()`. See docs/PLAN.md
-§ "CLI chat loop":
+Loads config, builds the LLM adapter, connects to every configured MCP
+server and registers its tools into a ToolRegistry, builds a MemoryStore
+and an Agent, then runs the chat loop through `agent.step()`. Every
+MCPToolClient gets closed on any exit path (see the try/finally in
+_main()) — clean /exit, EOF, or a crash. See docs/ARCHITECTURE.md for
+the full request-flow diagram.
 
-1. Parse `--config` (argparse), call `load_config(args.config)`.
-2. Resolve the adapter class from `ADAPTER_REGISTRY[config.llm.provider]`
-   (jarvis.llm.registry) and build it via `.from_config(config.llm)`.
-3. Build a ToolRegistry (register the recall tools once Step 7 exists)
-   and a MemoryStore(config.memory.root_dir, config.memory.user_id).
-4. Build an Agent(adapter, tools, memory, system_prompt=...).
-5. Loop on input("you> "): support `/exit` (or Ctrl+D), `/remember <text>`
-   (calls memory.append("facts.md", text)), and otherwise call
-   `agent.step(user_input)` and print the result. Catch exceptions per
-   turn so one bad turn doesn't kill the whole session.
+Not yet added: `--config` CLI flag, `/remember <text>` (needs
+MemoryStore, Step 7 — see docs/PLAN.md).
 """
 
 from __future__ import annotations

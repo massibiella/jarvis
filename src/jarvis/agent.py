@@ -1,22 +1,14 @@
 """The agent orchestrator: owns conversation history and the tool-call loop.
 
-TODO (Step 6): implement `Agent.step()`. See docs/PLAN.md § "CLI chat loop":
+`step(user_text)`: append the user's message → call the adapter with the
+current history + available tools → if the response has tool_calls, append
+the assistant's request, execute each via `ToolRegistry.execute` (errors
+become an error string fed back to the model, not a crash), append each
+result, and loop back to calling the adapter again → once there are no more
+tool_calls, append the assistant's text and return it.
 
-1. Append the user's message to self.history.
-2. Call `self.adapter.chat(...)` via `asyncio.to_thread` — the adapter's own
-   `chat()` stays a plain sync method (it's just a blocking HTTP call), but
-   `step()` is async so it doesn't block the event loop while waiting on it.
-   `await asyncio.to_thread(self.adapter.chat, messages=self.history,
-   tools=self.tools.as_llm_tool_specs(), system=self.system_prompt)`.
-3. If the response has tool_calls:
-   - Append an assistant ChatMessage carrying `response.content` and `response.tool_calls`.
-   - For each tool call, run it via `await self.tools.execute(call.name, call.arguments)`
-     (execute is async so MCP-backed tools can await their own network/subprocess calls),
-     catching exceptions and turning them into an error string (don't crash —
-     feed the error back to the model as the tool result so it can adapt).
-   - Append a ChatMessage(role="tool", tool_call_id=call.id, content=result) per call.
-   - Loop back to step 2.
-4. Otherwise: append the assistant turn and return its text.
+Implemented and verified end-to-end (real Gemini API, real MCP tool call
+via ToolRegistry/MCPToolClient) — see docs/ARCHITECTURE.md.
 """
 
 from __future__ import annotations

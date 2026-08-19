@@ -55,18 +55,11 @@ Wiring, once implemented:
 
 `users/default/` is the multi-user-ready layout from Key Decisions above; no auth logic in this milestone.
 
-## CLI chat loop
-
-`agent.py` — `Agent.step(user_text)` needs to: append user message → `adapter.chat(...)` → if `tool_calls`, execute each via `ToolRegistry.execute`, append `tool` results, loop; else append assistant message and return. Errors from tool execution are caught and returned as an error string in the tool result (visible to the model, not a crash). See the detailed docstring already in `agent.py`. Currently in progress.
-
-`cli.py` needs rewiring — currently calls the adapter directly, bypassing `Agent` entirely (see `ARCHITECTURE.md`'s "Known gaps"). Needs: build a `ToolRegistry`, build one `MCPToolClient` per `config.mcp_servers` entry and register its discovered tools, build a `MemoryStore`, build an `Agent`, then drive the `input()` loop through `agent.step()` instead of `adapter.chat()` directly. Add `/remember <text>` support once `MemoryStore` exists.
-
 ## Suggested implementation order (each step independently testable)
 
-Steps 1–5b are done — see `ARCHITECTURE.md` for current state.
+Steps 1–6 are done — see `ARCHITECTURE.md` for current state. `jarvis` runs end-to-end today: real config, real MCP tool (weather), real tool-calling loop, verified live.
 
-6. **Wire tools into Agent** — implement the tool-call loop in `agent.py` (in progress). Automated test via a scripted `FakeAdapter` (tool_use → end_turn), no network. Then the `cli.py` rewrite described above.
-7. **Memory store + recall** — see "Memory" section above. Tests: write-then-read round trip, index generation, search over sample files.
+7. **Memory store + recall** — see "Memory" section above. Tests: write-then-read round trip, index generation, search over sample files. `/remember <text>` CLI command once `MemoryStore` exists.
 8. **Polish** — clean error surfacing in the CLI, logging, README.
 9. **End-to-end verification** (below) + final `pytest` / `ruff check` / `ruff format --check` pass.
 
@@ -75,15 +68,15 @@ Steps 1–5b are done — see `ARCHITECTURE.md` for current state.
 **Manual CLI session:**
 ```
 $ jarvis
+you> what's the weather in Boston?
+jarvis> [agent calls get_current_weather via MCPToolClient, answers correctly]   ✅ verified
 you> /remember I'm doing a 12-week Spanish study plan, currently on week 3
 jarvis> Noted.
 you> what am I working on right now?
 jarvis> [agent uses recall/search_memory to find the note, answers correctly]
-you> what's the weather in Boston?
-jarvis> [agent calls get_current_weather via MCPToolClient, answers correctly]
 you> /exit
 ```
-Confirm `data/memory/users/default/facts.md` contains the note and `index.md` reflects it.
+The weather exchange above is real and already verified live. The `/remember`/recall exchange is the remaining target — confirm `data/memory/users/default/facts.md` contains the note and `index.md` reflects it once Step 7 is done.
 
 **Automated tests (pytest):** memory read/write/index/search round trips; `FakeAdapter`-driven agent loop test with zero network calls.
 
@@ -114,6 +107,4 @@ Not a problem today — `cli.py`'s loop is strictly sequential (`input()` blocks
 **Direction to take when this becomes real, not decided now:** serialize access per `Agent`/conversation — e.g. an `asyncio.Lock` so a second incoming message queues behind the first `step()` call instead of running concurrently, rather than trying to make concurrent history mutation itself safe.
 
 ## Remaining files
-- `src/jarvis/agent.py` — in progress
-- `src/jarvis/memory/store.py` — not started
-- `src/jarvis/cli.py` — needs the Agent/ToolRegistry/MCPToolClient rewire described above
+- `src/jarvis/memory/store.py` — not started, the only unfinished piece of Milestone 1

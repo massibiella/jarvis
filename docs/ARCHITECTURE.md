@@ -4,23 +4,28 @@ This is a snapshot of how Jarvis actually works *today* — present tense, no TO
 
 ## What runs today
 
-`jarvis` (installed via `pyproject.toml`'s `[project.scripts]`) is a terminal chat loop: it loads config, builds one LLM adapter (Gemini), and repeatedly sends whatever you type straight to that adapter, printing the reply. Tool-calling infrastructure (`ToolRegistry`, `MCPToolClient`) is fully built and independently tested, but **not yet wired into the running chat loop** — see "Known gaps" below.
+`jarvis` (installed via `pyproject.toml`'s `[project.scripts]`) is a working terminal chat agent: it loads config, launches every configured MCP server and registers its tools, builds an `Agent`, and runs a chat loop through `Agent.step()` — so the model can actually call real tools (e.g. `get_current_weather` via `weather-mcp`) and use the result to answer. Verified live end-to-end.
 
 ## Request flow, as it exists right now
 
 ```
 jarvis (console script)
   → src/jarvis/cli.py: main() → asyncio.run(_main())
-    → load_dotenv() + load_config()               [src/jarvis/config.py]
-    → get_adapter_class(config.llm.provider)       [src/jarvis/llm/registry.py]
-    → adapter = GeminiAdapter.from_config(...)     [src/jarvis/llm/adapters/gemini_adapter.py]
+    → load_dotenv() + load_config()                [src/jarvis/config.py]
+    → get_adapter_class(...) + adapter.from_config  [src/jarvis/llm/registry.py, adapters/gemini_adapter.py]
+    → for each config.mcp_servers entry:
+        MCPToolClient(...).connect() + list_tools()  [src/jarvis/tools/mcp_client.py]
+        → each discovered tool wrapped (_mcp_tool_to_tool) and
+          registered into a ToolRegistry                [src/jarvis/tools/registry.py]
+    → MemoryStore(...) built (constructed only — nothing calls its methods yet)
+    → system prompt loaded (system_prompt.md, or config.agent.system_prompt_file if set)
+    → Agent(adapter, tools, memory, system_prompt) built  [src/jarvis/agent.py]
     → loop:
-        input() → append to a local `history` list
-        → await asyncio.to_thread(adapter.chat, history)
-        → print(response.content)
+        input("you> ") → await agent.step(user_input) → print result
+    → on any exit path (clean /exit, EOF, or a crash): every MCPToolClient is closed
 ```
 
-Notable: this loop calls `adapter.chat()` **directly** — it does not go through `Agent`, `ToolRegistry`, or `MemoryStore`. Those three exist and (except `Agent`) are fully implemented, but nothing in `cli.py` constructs or uses them yet.
+`Agent.step()` owns the full tool-call loop internally: send history + available tools to the adapter, execute any requested tool calls via `ToolRegistry`, feed results back in, repeat until the model answers in plain text.
 
 ## Package layout
 
@@ -31,7 +36,8 @@ jarvis/
 ├── src/jarvis/
 │   ├── config.py                        # JarvisConfig dataclasses + load_config()
 │   ├── cli.py                           # entry point — see "Request flow" above
-│   ├── agent.py                         # Agent orchestrator — in progress, not wired into cli.py
+│   ├── system_prompt.md                 # built-in default system prompt
+│   ├── agent.py                         # Agent orchestrator — full tool-call loop, wired into cli.py
 │   ├── llm/
 │   │   ├── base.py                      # ChatMessage/ToolSpec/LLMResponse/LLMAdapter — the
 │   │   │                                #   provider-neutral shape everything else imports
@@ -52,21 +58,21 @@ jarvis/
 
 **LLM adapters (`llm/`)** — `LLMAdapter` is an ABC with one method, `chat(messages, tools, system, max_tokens) -> LLMResponse`; every provider implements it, translating to/from that provider's own wire format. `llm/registry.py` maps a config string (`"gemini"`) to the adapter class. `GeminiAdapter` is the only complete, working one — both plain-message chat and tool-calling (both directions: offering tools, parsing the model's function-call requests back out) are verified against the real API. `AnthropicAdapter` exists but its `chat()` is unfinished and it's deliberately left out of the registry.
 
-**Tools (`tools/`)** — three independent pieces, each tested in isolation, not yet connected to each other or to `Agent`:
+**Tools (`tools/`)** — three pieces, wired together and into `Agent` via `cli.py`:
 - `schema.py`'s `build_schema_from_signature()` turns a Python function's signature into a JSON Schema dict (`str`/`int`/`float`/`bool`, required-if-no-default).
 - `registry.py`'s `ToolRegistry` holds a `dict[str, Tool]` (`Tool` = name/description/parameters/func). `register()` is a decorator for native Python functions (uses `schema.py`); `add_tool()` takes an already-fully-described `Tool` directly (what MCP wiring will use). `execute()` calls a tool's `func` and handles both sync and async callables uniformly (`inspect.isawaitable` check). `as_llm_tool_specs()` converts everything registered into the `ToolSpec` list `LLMAdapter.chat()` expects.
 - `mcp_client.py`'s `MCPToolClient` wraps one MCP server subprocess (stdio transport): `connect()` (spawn + handshake, via `AsyncExitStack` so the connection survives past the method call), `list_tools()` (→ `list[ToolSpec]`), `call_tool()` (→ `str`), `close()`. Verified end-to-end against the real [`weather-mcp`](https://github.com/massibiella/weather-mcp) server.
 
-**Agent (`agent.py`)** — owns `self.history: list[ChatMessage]` and runs the tool-calling loop: `step()` sends history + available tools to the adapter, executes any requested tool calls via `ToolRegistry`, feeds results back in, and repeats until the model answers in plain text. Implemented and verified end-to-end against the real Gemini API, including a real tool call. Not yet wired into `cli.py` — that's the remaining gap (see above).
+**Agent (`agent.py`)** — owns `self.history: list[ChatMessage]` and runs the tool-calling loop: `step()` sends history + available tools to the adapter, executes any requested tool calls via `ToolRegistry`, feeds results back in, and repeats until the model answers in plain text. Implemented, wired into `cli.py`, and verified end-to-end against the real Gemini API with a real MCP tool call.
 
-**Memory (`memory/store.py`)** — designed (markdown + YAML frontmatter, one dir per `user_id`, an index loaded into the system prompt plus on-demand `read`/`search` tools) but not implemented — every method still raises.
+**System prompt (`system_prompt.md`)** — the built-in default, loaded by `cli.py`'s `_load_system_prompt()`; `config.agent.system_prompt_file`, if set, overrides it with a different file instead.
+
+**Memory (`memory/store.py`)** — designed (markdown + YAML frontmatter, one dir per `user_id`, an index loaded into the system prompt plus on-demand `read`/`search` tools) but not implemented — every method still raises. `cli.py` constructs a `MemoryStore` and hands it to `Agent`, but nothing calls any of its methods yet.
 
 **weather-mcp** — not part of this repo. A separate, standalone MCP server ([github.com/massibiella/weather-mcp](https://github.com/massibiella/weather-mcp)) exposing one tool, `get_current_weather`, via the Open-Meteo API. Runs as its own subprocess, launched by `MCPToolClient` per the `mcp_servers.weather` entry in `config.yaml`.
 
 ## Known gaps (today, not a roadmap — see PLAN.md for that)
 
-- `cli.py` bypasses `Agent`/`ToolRegistry`/`MemoryStore` entirely — talks to the adapter directly.
-- `MemoryStore` is fully unimplemented.
-- Nothing yet builds an `MCPToolClient` from `config.mcp_servers` at runtime — it's only been exercised manually/in throwaway test scripts.
-
-`Agent.step()` and `GeminiAdapter`'s tool-calling translation (both directions — offering tools, and parsing the model's function-call requests back out, including Gemini's `thought_signature` round-trip requirement) are both done and verified end-to-end against the real API.
+- `MemoryStore` is fully unimplemented — nothing persists across sessions yet, and there's no `/remember` command or recall tools.
+- `ToolRegistry.register()` (the native-Python-tool decorator path) has no real tool using it yet — only `add_tool()` (the MCP path) is exercised by the running app.
+- `AnthropicAdapter` is unfinished and unregistered — Gemini is the only usable provider today.

@@ -3,7 +3,7 @@
 Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature is actually usable, not just started. See `PLAN.md` for the current milestone's implementation details and in-progress work.
 
 - [x] LLM-agnostic (works with any LLM given a config file) — provider adapter pattern; `GeminiAdapter` working end to end, `AnthropicAdapter` partial
-- [ ] Local weather — MCP server (`weather-mcp`, Open-Meteo, no key) and Jarvis's `ToolRegistry`/`MCPToolClient` all built and verified individually. Not checked off yet: the two aren't wired together into `Agent`/`cli.py`, so the agent can't answer a weather question end to end yet.
+- [x] Local weather — MCP server (`weather-mcp`, Open-Meteo, no key), wired into `Agent`/`cli.py` via `ToolRegistry`/`MCPToolClient`. Verified live: `jarvis` answers real weather questions end to end.
 - [ ] Google/Apple Calendar (view/create/delete/update/remind/reorganize) — MCP-based, needs Google OAuth
 - [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR
@@ -19,3 +19,4 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 
 ## Nice to have
 - [ ] Mobile connection (e.g. message the user via Telegram)
+- [ ] GraphDB for facts and relationships. Other ideas?

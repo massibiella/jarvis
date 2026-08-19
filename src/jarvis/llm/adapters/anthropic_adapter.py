@@ -1,7 +1,7 @@
 """Anthropic implementation of LLMAdapter.
 
-TODO (Step 3): implement `chat()`. See docs/PLAN.md
-§ "LLM adapter (provider-agnostic)" for the exact translation needed:
+TODO: implement `chat()`, deliberately deferred (needs paid Anthropic
+billing — see docs/PLAN.md § "Key decisions"). Exact translation needed:
 
 - ToolSpec -> Anthropic's {"name", "description", "input_schema"}
 - response.content blocks -> LLMResponse.content (text) + .tool_calls (tool_use)

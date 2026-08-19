@@ -29,7 +29,7 @@ from jarvis.llm.registry import get_adapter_class
 logger = logging.getLogger(__name__)
 
 
-async def main() -> None:
+async def _main() -> None:
     load_dotenv()
     config = load_config()
     logging.basicConfig(level=config.logging.level)
@@ -55,12 +55,19 @@ async def main() -> None:
             response = await asyncio.to_thread(adapter.chat, history)
         except Exception as e:
             history.pop()   # needed since if the .chat() call fails, the loop would continue to append
-                            # another 'user' message, which would cause issues.
+                            # another 'user' message, which would cause issues. Need to handle latest request not being the one that failed
             logger.error("Chat request failed: %s - try again later", e)
             continue
         print(response.content)
         history.append(ChatMessage(role="assistant", content=response.content))
 
 
+def main() -> None:
+    """Sync entry point for pyproject.toml's [project.scripts] — that entry
+    point calls this function directly, with no awareness of asyncio, so it
+    has to be the thing that actually starts the event loop."""
+    asyncio.run(_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -10,6 +10,7 @@ yet. See docs/ARCHITECTURE.md for how this fits into the rest of `tools/`.
 from __future__ import annotations
 
 import inspect
+import typing
 from collections.abc import Callable
 from typing import Any
 
@@ -26,16 +27,18 @@ def build_schema_from_signature(func: Callable[..., Any]) -> dict[str, Any]:
     """
 
     sig = inspect.signature(func)
-
-    # Build dict that holds the input parameters of func
-    # OrderedDict({'location': <Parameter "location: str">})
     params = sig.parameters
 
-    # Collect all parameters before concatenating into final return dict
+    # get_type_hints resolves annotations back into real type objects even
+    # when the defining module has `from __future__ import annotations`
+    # (which makes param.annotation a plain string like 'str', not the type
+    # str, breaking a plain _PYTHON_TO_JSON_TYPES[param.annotation] lookup).
+    type_hints = typing.get_type_hints(func)
+
     properties = {}
     required = []
     for name, param in params.items():
-        properties[name] =  {"type": _PYTHON_TO_JSON_TYPES[param.annotation]}
+        properties[name] = {"type": _PYTHON_TO_JSON_TYPES[type_hints[name]]}
         if param.default is inspect.Parameter.empty:
             required.append(name)
 

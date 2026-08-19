@@ -25,6 +25,7 @@ from jarvis.llm.base import ToolSpec
 from jarvis.llm.registry import get_adapter_class
 from jarvis.memory.store import MemoryStore
 from jarvis.tools.mcp_client import MCPToolClient
+from jarvis.tools.memory_tools import register_memory_tools
 from jarvis.tools.registry import Tool, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,8 @@ async def _main() -> None:
                     tools.add_tool(_mcp_tool_to_tool(client, tool))
 
         memory = MemoryStore(config.memory.root_dir, config.memory.user_id)
+        register_memory_tools(tools, memory)
+
         system_prompt = _load_system_prompt(config)
         agent = Agent(adapter, tools, memory, system_prompt)
 

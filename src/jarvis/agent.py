@@ -34,7 +34,9 @@ class Agent:
         self.tools = tools
         self.memory = memory
         self.history: list[ChatMessage] = []
-        self.system_prompt = system_prompt
+
+        index = memory.load_index()
+        self.system_prompt = f"{system_prompt}\n\n{index}" if index else system_prompt
 
     async def step(self, user_text: str) -> str:
         self.history.append(ChatMessage(role="user", content=user_text))

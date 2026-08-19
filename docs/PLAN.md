@@ -4,197 +4,36 @@
 
 Jarvis is a from-scratch personal assistant project. The PRD (`../PRD.md`) lists 14 eventual features — calendar, IBKR investing, newsletters, memory, a JARVIS-style UI, multi-user auth, weather, daily check-ins, standalone reminders, web research, and an explicit requirement to be **LLM-agnostic via config**. That's too much to build at once, and most of it depends on a working agent core existing first.
 
-This plan covers only the first milestone: **the core agent skeleton** — the foundation every later feature (calendar, IBKR, weather, web research, etc.) will plug into as a tool. No real integrations ship in this milestone; the goal is a working, testable chat loop with the right extension points already in place.
+This plan covers only the first milestone: **the core agent skeleton** — the foundation every later feature (calendar, IBKR, weather, web research, etc.) will plug into as a tool. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the system works today; this file covers what's left to build and why past decisions were made the way they were.
 
-Team context: one experienced dev + one dev newer to programming, both new to agentic applications specifically. This shaped two decisions below — hand-writing the agent loop instead of adopting a framework (LangChain/Pydantic AI), and keeping the memory design simple (flat files, no vector DB) until there's an actual reason to add complexity.
+Team context: one experienced dev + one dev newer to programming, both new to agentic applications specifically. This shaped several of the decisions below.
 
 ## How we'll work
 
-This is a learning project as much as a build. This plan file lives in the repo so it's a shared reference you both read and edit directly. The "Suggested implementation order" section below is deliberately broken into small, independently-testable steps for exactly this reason.
+This is a learning project as much as a build. This plan file lives in the repo so it's a shared reference you both read and edit directly.
 
-**Split:** steps 1–2 (scaffolding + config loading) are implemented as a worked example of the patterns (package layout, dataclass config, error handling, test structure) — see `src/jarvis/config.py` and `tests/test_config.py`. From step 3 onward (LLM adapter, CLI loop, tool registry, memory + recall), the corresponding files are stubs with docstrings and `TODO` markers pointing back to this plan — you and Adnan write the actual logic there.
-
-## Completed
-
-Kept short and moved here so the rest of the plan stays about what's left, not what's done. Full design rationale for each still lives in its own section below.
-
-- **Scaffolding** (Step 1) — package layout, `pyproject.toml`, ruff config.
-- **Config loading** (Step 2) — `src/jarvis/config.py` + `config/config.example.yaml` + `tests/test_config.py`; extended since with the `mcp_servers` section (see "MCP client" below).
-- **LLM adapter — Gemini** (Step 3, provider pivot) — original plan targeted Anthropic first; pivoted to Gemini (free tier, see "Key decisions") since it doesn't need paid billing. `src/jarvis/llm/adapters/gemini_adapter.py`, verified end-to-end including multi-turn history. `anthropic_adapter.py` is an unfinished stub, deferred until there's a reason to pay for Anthropic API access — not blocking anything.
-- **Bare CLI loop** (Step 4) — `src/jarvis/cli.py`: config → adapter → `input()` loop, manually verified against the live Gemini API.
-- **Async conversion** — `cli.py`'s `main()`, `Agent.step`, `ToolRegistry.execute` are all `async def` now, done ahead of the MCP client landing so it doesn't need retrofitting — see "MCP client" section for the reasoning.
-- **weather-mcp** — standalone MCP server, separate repo ([github.com/massibiella/weather-mcp](https://github.com/massibiella/weather-mcp)). One tool, `get_current_weather`, via Open-Meteo; tested, documented. Not yet consumed by Jarvis — that's the MCP client, Step 5b below.
+**Split:** steps 1–2 (scaffolding + config loading) were implemented as a worked example of the patterns (package layout, dataclass config, error handling, test structure). From step 3 onward, the corresponding files are stubs with docstrings and `TODO` markers pointing back to this plan — you and Adnan write the actual logic there.
 
 ## Key decisions (from discussion)
 
-1. **No agent framework for the loop.** Hand-write the tool-calling loop (~40-80 lines) directly on the Anthropic SDK, behind a provider-agnostic adapter interface. Rationale: fewer layers to debug through while learning, keeps "LLM-agnostic" honest (a thin custom interface, not a framework's provider abstraction), and the loop is small enough that swapping in LangGraph later is a localized rewrite of one module, not a restart — the LLM adapter, tool registry, memory store, and CLI all survive that swap untouched.
-2. **MCP-ready tool registry.** The tool registry's shape (name, description, JSON-schema parameters, execute) is designed so an MCP client can register MCP-server tools alongside native Python tools later, without changing the registry's interface. No MCP client ships in this milestone — this is an extension point, not a feature.
-3. **Memory: flat files, index-at-startup + on-demand recall, no vector DB.** Persistent memory (distinct from in-conversation history) lives as markdown files with YAML frontmatter, mirroring the pattern Claude Code itself uses for its own memory. At session start, only a lightweight **index** (file list + one-line descriptions) loads into the system prompt — not full file contents. A `recall` tool lets the agent list/search/read specific files on demand mid-conversation. This is what makes "reference a study plan from months ago" work without blowing up context size as memory grows. Vector search is an explicit non-goal until plain-text/keyword lookup actually proves insufficient.
+1. **No agent framework for the loop.** Hand-write the tool-calling loop directly behind a provider-agnostic adapter interface. Rationale: fewer layers to debug through while learning, keeps "LLM-agnostic" honest (a thin custom interface, not a framework's provider abstraction), and the loop is small enough that swapping in LangGraph later is a localized rewrite of one module, not a restart.
+2. **MCP-ready tool registry.** The tool registry's shape (name, description, JSON-schema parameters, execute) was designed so an MCP client could register MCP-server tools alongside native Python tools without changing the registry's interface. This paid off in practice: `MCPToolClient` plugs into `ToolRegistry` via `add_tool()` with zero changes to `ToolRegistry` itself.
+3. **Memory: flat files, index-at-startup + on-demand recall, no vector DB.** Persistent memory (distinct from in-conversation history) lives as markdown files with YAML frontmatter, mirroring the pattern Claude Code itself uses for its own memory. At session start, only a lightweight **index** (file list + one-line descriptions) loads into the system prompt — not full file contents. A `recall` tool lets the agent list/search/read specific files on demand mid-conversation. Vector search is an explicit non-goal until plain-text/keyword lookup actually proves insufficient.
 4. **Multi-user readiness without building auth.** Memory is laid out under `users/<user_id>/` with `user_id` defaulting to `"default"` in config. This costs nothing now and avoids a data-layout migration when auth (a separate future milestone) lands.
-
-## Package layout
-
-```
-jarvis/
-├── pyproject.toml
-├── README.md
-├── docs/
-│   └── PLAN.md                      # this file
-├── config/
-│   └── config.example.yaml
-├── src/jarvis/
-│   ├── config.py                    # JarvisConfig dataclasses + load_config()  [done]
-│   ├── cli.py                       # entry point: main() chat loop             [stub]
-│   ├── agent.py                     # Agent orchestrator (history + tool-call loop) [stub]
-│   ├── llm/
-│   │   ├── base.py                  # LLMAdapter ABC, ChatMessage, ToolSpec, ToolCallRequest, LLMResponse [stub]
-│   │   ├── registry.py              # provider name -> adapter class            [stub]
-│   │   └── anthropic_adapter.py     # AnthropicAdapter(LLMAdapter)              [stub]
-│   ├── tools/
-│   │   ├── registry.py              # ToolRegistry, @registry.register decorator (MCP-ready shape) [stub]
-│   │   ├── schema.py                # inspect.signature -> JSON schema          [stub]
-│   │   └── examples.py              # gated demo tool, for plumbing verification only [stub]
-│   └── memory/
-│       └── store.py                 # MemoryStore: frontmatter read/write, index, recall [stub]
-├── tests/
-│   ├── test_config.py               # [done]
-│   ├── test_tools_registry.py       # [to write, Step 5]
-│   ├── test_memory_store.py         # [to write, Step 7]
-│   ├── test_llm_anthropic_adapter.py   # [to write, Step 3] mocked anthropic client, no network
-│   └── test_agent_tool_loop.py         # [to write, Step 6] FakeAdapter test double, no network
-└── data/                              # gitignored, created at runtime
-    └── memory/
-        ├── index.md
-        └── users/default/{facts.md,preferences.md}
-```
-
-`src/` layout avoids import-shadowing with `pip install -e`. `data/` and `config.yaml` are gitignored.
-
-## LLM adapter (provider-agnostic)
-
-`llm/base.py` — plain dataclasses (no pydantic needed yet) + an ABC:
-
-```python
-Role = Literal["system", "user", "assistant", "tool"]
-
-
-@dataclass
-class ToolCallRequest:
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-
-@dataclass
-class ChatMessage:
-    role: Role
-    content: str | None = None
-    tool_calls: list[ToolCallRequest] | None = None
-    tool_call_id: str | None = None
-
-
-@dataclass
-class ToolSpec:
-    name: str
-    description: str
-    parameters: dict[str, Any]  # JSON schema
-
-
-@dataclass
-class LLMResponse:
-    content: str | None
-    tool_calls: list[ToolCallRequest]
-    stop_reason: str
-    raw: Any = None
-
-
-class LLMAdapter(ABC):
-    @classmethod
-    @abstractmethod
-    def from_config(cls, llm_config: "LLMConfig") -> "LLMAdapter": ...
-
-    @abstractmethod
-    def chat(
-        self,
-        messages: list[ChatMessage],
-        tools: list[ToolSpec] | None = None,
-        system: str | None = None,
-        max_tokens: int | None = None,
-    ) -> LLMResponse: ...
-```
-
-`llm/registry.py`: `dict[str, type[LLMAdapter]]` (e.g. `{"anthropic": AnthropicAdapter}`), resolved from `config.llm.provider`. Adding a provider later = one adapter module + one registry entry.
-
-`llm/anthropic_adapter.py`: wraps `anthropic.Anthropic().messages.create(...)`. Translates `ToolSpec` → Anthropic's `{"name", "description", "input_schema"}`; walks `response.content` collecting `text` blocks into `.content` and `tool_use` blocks into `.tool_calls` (input is already parsed JSON — no manual parsing); maps `stop_reason` straight through. Non-streaming for this milestone; streaming is a natural v2 addition behind the same `chat()` shape. Model/API key come from config — nothing hardcoded (default in `config.example.yaml`: `claude-opus-5`).
-
-## Tool registry (MCP-ready)
-
-```python
-@dataclass
-class Tool:
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    func: Callable[..., str]
-
-
-class ToolRegistry:
-    def register(
-        self, name=None, description=None
-    ): ...  # decorator, derives schema via inspect.signature
-    def execute(self, name: str, arguments: dict) -> str: ...
-    def as_llm_tool_specs(self) -> list[ToolSpec]: ...
-```
-
-`tools/schema.py` derives JSON schema from function type hints (str/int/float/bool/Optional/list); unsupported annotations raise clearly rather than guessing. Because a `Tool` is just name/description/schema/callable, an MCP client can register MCP-server tools into the same registry without changing this interface.
-
-**Update (from discussion): the MCP client isn't deferred — it's the plan for the first real tools.** Original scope had a throwaway example tool proving the plumbing works, then real tools added later as plain Python functions. Decision now: skip the throwaway tool (removed `tools/examples.py`) and prove the registry directly with real MCP-sourced tools — see "MCP integrations" below.
+5. **Gemini over Anthropic as the first working provider.** Anthropic's API needs paid billing; Gemini has a usable free tier. `AnthropicAdapter` is left unfinished and unregistered until there's a reason to pay for API access — a sequencing choice, not a design problem. Note: Gemini's free tier allows prompt/response data to be used for training — revisit before Jarvis handles real personal/financial data (see the note in `gemini_adapter.py`).
+6. **Async end-to-end, decided ahead of actually needing it.** The MCP client SDK is fully async, and a persistent MCP connection can't be reused across separate `asyncio.run()` calls — asyncio resources are loop-affine, so spinning up a new event loop per call breaks a connection opened in a previous one. Rather than retrofit later, `cli.py`, `Agent.step`, and `ToolRegistry.execute` were all made async from the start.
+7. **MCP transport: stdio for now, not SSE/HTTP.** Servers Jarvis launches itself (like `weather-mcp`) run as local subprocesses — their code has to be physically present on whatever machine runs Jarvis. Fine since Jarvis runs on one machine; revisit with SSE/HTTP transport only if Jarvis and its MCP servers ever need to live on separate hosts.
 
 ## MCP integrations (target list, tackle one at a time — user writes the code)
 
-Three target integrations, in this order (easiest first — the later two need Google OAuth, which is real setup friction similar to what we hit with API keys/billing; weather needs none):
+Weather is done (see `ARCHITECTURE.md`). Two more targets, in order (both need Google OAuth — real setup friction, unlike weather):
 
-1. **Weather** — no auth needed. Check whether a trustworthy existing MCP weather server exists before building one; if not, a small custom MCP server wrapping [Open-Meteo](https://open-meteo.com) (free, no API key) is a reasonable and genuinely educational fallback — mirrors the "write your own MCP server" pattern already called out for IBKR.
-2. **Google Calendar** — PRD item 1. Needs Google OAuth setup; check for an existing community/official MCP server first rather than hand-rolling OAuth.
-3. **Google Maps / traffic (commute time)** — PRD item 15 (added this session). Also needs Google OAuth/API access; same "find an existing server first" approach.
+1. **Google Calendar** — PRD item 1. Check for an existing community/official MCP server first rather than hand-rolling OAuth.
+2. **Google Maps / traffic (commute time)** — PRD item 15. Same "find an existing server first" approach.
 
-For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used for the Gemini adapter. None of these are designed yet — do that when we get to each one, not now.
+For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project. Neither is designed yet.
 
-**Transport (from discussion):** MCP servers we launch ourselves (like `weather-mcp`) start on **stdio transport** — Jarvis spawns the server as a subprocess via a command in config (e.g. `mcp_servers.weather.command: [...]`). This means the server's code must be physically present on whatever machine runs Jarvis; that's an accepted coupling for now since Jarvis runs locally on one machine. If Jarvis and its MCP servers ever need to live on separate machines (e.g. Jarvis on an always-on home server, servers elsewhere), MCP also supports **SSE/HTTP transport** — the server runs as its own persistent process and Jarvis's client connects via URL instead of spawning it. Not needed yet; revisit only when there's an actual reason to split hosts.
-
-### MCP client (`tools/mcp_client.py`) — connects Jarvis to servers like `weather-mcp`
-
-One instance per entry in `config.mcp_servers`. Shape:
-
-```python
-class MCPToolClient:
-    """Wraps one MCP server subprocess: discovers its tools, calls them on demand."""
-
-    def __init__(self, name: str, command: list[str]) -> None: ...
-
-    async def connect(self) -> None:
-        """Launch the subprocess (mcp.client.stdio.stdio_client) and open
-        an mcp.ClientSession over it."""
-
-    async def list_tools(self) -> list[ToolSpec]:
-        """Ask the server what tools it has (MCP's own list_tools()); translate
-        each into our ToolSpec (name/description/parameters) — same shape
-        native Python tools use, so ToolRegistry doesn't need to know the
-        difference."""
-
-    async def call_tool(self, name: str, arguments: dict) -> str:
-        """Invoke a tool on this server, return its result as a string."""
-
-    async def close(self) -> None: ...
-```
-
-Wiring at startup (`cli.py`, alongside building `ToolRegistry`): for each `config.mcp_servers` entry, build an `MCPToolClient`, `connect()`, `list_tools()`, then register each discovered tool into `ToolRegistry` with `func` set to a small wrapper that forwards to `client.call_tool(tool_name, kwargs)`. `agent.py` and `ToolRegistry.execute()` never need to know a given tool actually lives in another process — same "MCP-ready without an MCP-specific interface" idea `Tool` was already designed around.
-
-**Known wrinkle, resolved (from discussion):** the MCP SDK's client side is fully `async` (`ClientSession`, `stdio_client`). The tempting shortcut — connect once, then call `asyncio.run(client.call_tool(...))` per invocation — is actually broken: `asyncio.run()` opens a new event loop each call and tears it down when it returns, but a `ClientSession`/subprocess opened in one loop isn't valid to reuse from a different loop (asyncio resources are loop-affine). So either reconnect the subprocess on every tool call (correct, but pays subprocess-startup cost each time — wasteful once there's more than one server or tools get called often), or make the loop properly `async` end-to-end.
-
-**Decision: go async end-to-end. [done]** `cli.py`'s `main()` is `async def`, run via `asyncio.run(main())` at the very bottom; `input()` and `adapter.chat()` calls are wrapped in `asyncio.to_thread` so they don't block the loop. `Agent.step` and `ToolRegistry.execute` are `async def` (still stubs, Steps 5/6, but with the right signature now). The MCP connection will open once at startup and stay alive for the process's life, same as any normal MCP client app, once Step 5b implements it. `LLMAdapter.chat()` implementations didn't need to become async themselves — called via `asyncio.to_thread(adapter.chat, ...)`.
-
-## Memory (index + on-demand recall)
+## Memory (index + on-demand recall) — not yet built, Step 7
 
 ```
 data/memory/
@@ -205,63 +44,29 @@ data/memory/
     └── sessions/                  # optional dated notes
 ```
 
-Each file: YAML frontmatter (`title`, `tags`, `updated_at`) + markdown body. Frontmatter parsed with a `---` split + `yaml.safe_load` (PyYAML — already needed for config).
+Each file: YAML frontmatter (`title`, `tags`, `updated_at`) + markdown body. Frontmatter parsed with a `---` split + `yaml.safe_load` (PyYAML — already used by `config.py`).
 
-```python
-class MemoryStore:
-    def __init__(self, root: Path, user_id: str = "default"): ...
-    def read(self, relative_path: str) -> MemoryEntry: ...
-    def write(self, relative_path: str, body: str, frontmatter: dict | None = None) -> None: ...
-    def append(self, relative_path: str, text: str) -> None: ...
-    def load_index(self) -> str: ...
-    def search(self, query: str) -> list[str]: ...  # basic keyword/grep over file contents
-```
+`MemoryStore` (see `src/jarvis/memory/store.py` for the exact method signatures — already stubbed) needs: `read`/`write`/`append` on a single file under `users/<user_id>/`; `load_index()` returning just the index (not full file contents) for the system prompt; `search()` as plain keyword/grep, no embeddings.
 
-Wiring:
-- **Startup**: `Agent.__init__` appends `memory.load_index()` (not full file contents) to the system prompt.
-- **Write path**: explicit `/remember <text>` CLI command → `memory.append("facts.md", text)`. Auto-summarizing conversation into memory is out of scope here (natural v2: either background summarization, or exposing `append` as an agent-callable tool).
-- **Recall path**: register `recall` tool(s) in the `ToolRegistry` — `list_memory()`, `read_memory(path)`, `search_memory(query)` — thin wrappers around `MemoryStore`, so the agent can pull a specific file's full content into context only when the conversation actually needs it (e.g. "what's my study plan say"), rather than every file being loaded every turn.
+Wiring, once implemented:
+- **Startup**: `Agent.__init__` appends `memory.load_index()` to the system prompt.
+- **Write path**: explicit `/remember <text>` CLI command → `memory.append("facts.md", text)`.
+- **Recall path**: register `recall` tool(s) in `ToolRegistry` — `list_memory()`, `read_memory(path)`, `search_memory(query)` — thin wrappers around `MemoryStore`, so the agent can pull a specific file's content into context only when actually needed.
 
-`users/default/` is the multi-user-ready layout described above; no auth logic in this milestone.
-
-## Config
-
-YAML, human-editable — see `config/config.example.yaml`:
-
-```yaml
-llm:
-  provider: anthropic
-  model: claude-opus-5
-  api_key_env: ANTHROPIC_API_KEY   # env var name, never the key itself
-  max_tokens: 4096
-
-memory:
-  root_dir: ./data/memory
-  user_id: default
-
-agent:
-  system_prompt_file: null
-
-logging:
-  level: INFO
-```
-
-`src/jarvis/config.py`: plain dataclasses (`LLMConfig`, `MemoryConfig`, `AgentConfig`, `LoggingConfig`, `JarvisConfig`) + `load_config(path=None)` resolving explicit path → `$JARVIS_CONFIG` → `./config.yaml` → `~/.jarvis/config.yaml`. `LLMConfig.api_key` reads the env var lazily, raising `ConfigError` if unset. **Done — read this file for the patterns used elsewhere.**
+`users/default/` is the multi-user-ready layout from Key Decisions above; no auth logic in this milestone.
 
 ## CLI chat loop
 
-`agent.py` — `Agent.step(user_text)` runs: append user message → `adapter.chat(...)` → if `tool_calls`, execute each via `ToolRegistry.execute`, append `tool` results, loop; else append assistant message and return. Errors from tool execution are caught and returned as an error string in the tool result (visible to the model, not a crash).
+`agent.py` — `Agent.step(user_text)` needs to: append user message → `adapter.chat(...)` → if `tool_calls`, execute each via `ToolRegistry.execute`, append `tool` results, loop; else append assistant message and return. Errors from tool execution are caught and returned as an error string in the tool result (visible to the model, not a crash). See the detailed docstring already in `agent.py`. Currently in progress.
 
-`cli.py` — `main()`: parse `--config`, load config, resolve adapter from registry, build `ToolRegistry` (+ example tool if enabled, + recall tools always), build `MemoryStore`, build `Agent`, then a `input()` loop supporting `/exit`, `/remember <text>`, and plain chat. Entry point via `pyproject.toml` `[project.scripts] jarvis = "jarvis.cli:main"`.
+`cli.py` needs rewiring — currently calls the adapter directly, bypassing `Agent` entirely (see `ARCHITECTURE.md`'s "Known gaps"). Needs: build a `ToolRegistry`, build one `MCPToolClient` per `config.mcp_servers` entry and register its discovered tools, build a `MemoryStore`, build an `Agent`, then drive the `input()` loop through `agent.step()` instead of `adapter.chat()` directly. Add `/remember <text>` support once `MemoryStore` exists.
 
 ## Suggested implementation order (each step independently testable)
 
-Steps 1-4 are done — see "Completed" above.
+Steps 1–5b are done — see `ARCHITECTURE.md` for current state.
 
-5. **Tool registry** — schema derivation + execute/error paths + shape tests.
-5b. **MCP client** — implement `tools/mcp_client.py` against `weather-mcp`; wire discovered tools into `ToolRegistry`. See "MCP client" section below.
-6. **Wire tools into Agent** — implement the tool-call loop in `agent.py`. Automated test via a scripted `FakeAdapter` (tool_use → end_turn), no network.
-7. **Memory store + recall** — frontmatter read/write, index, `search`; wire index into system prompt; add `list_memory`/`read_memory`/`search_memory` tools; wire `/remember`. Tests: write-then-read round trip, index generation, search over sample files.
+6. **Wire tools into Agent** — implement the tool-call loop in `agent.py` (in progress). Automated test via a scripted `FakeAdapter` (tool_use → end_turn), no network. Then the `cli.py` rewrite described above.
+7. **Memory store + recall** — see "Memory" section above. Tests: write-then-read round trip, index generation, search over sample files.
 8. **Polish** — clean error surfacing in the CLI, logging, README.
 9. **End-to-end verification** (below) + final `pytest` / `ruff check` / `ruff format --check` pass.
 
@@ -269,23 +74,24 @@ Steps 1-4 are done — see "Completed" above.
 
 **Manual CLI session:**
 ```
-$ export ANTHROPIC_API_KEY=sk-...
 $ jarvis
 you> /remember I'm doing a 12-week Spanish study plan, currently on week 3
 jarvis> Noted.
 you> what am I working on right now?
 jarvis> [agent uses recall/search_memory to find the note, answers correctly]
+you> what's the weather in Boston?
+jarvis> [agent calls get_current_weather via MCPToolClient, answers correctly]
 you> /exit
 ```
 Confirm `data/memory/users/default/facts.md` contains the note and `index.md` reflects it.
 
-**Automated tests (pytest):** config resolution/validation; tool schema derivation + execute/error paths; memory read/write/index/search round trips; mocked Anthropic adapter request/response shape (system separate from messages, tool_result paired with tool_use ids, both text-only and tool_use response cases); `FakeAdapter`-driven agent loop test with zero network calls.
+**Automated tests (pytest):** memory read/write/index/search round trips; `FakeAdapter`-driven agent loop test with zero network calls.
 
 **Acceptance gate:** `pytest` and `ruff check . && ruff format --check .` both clean.
 
 ## Future step: conversation history management (post–Milestone 1)
 
-Not in scope for Milestone 1 — `self.history` in `agent.py` can grow unbounded for now. Revisit once the core loop (Steps 3–6) is working end to end; don't let this block finishing `chat()`.
+Not in scope for Milestone 1 — `self.history` in `agent.py` can grow unbounded for now. Revisit once the core loop (Step 6) is working end to end; don't let this block finishing `step()`.
 
 **Decision (from discussion):** lean on Anthropic's native **compaction** feature rather than hand-rolling summarization or a trim-by-count policy ourselves.
 
@@ -293,16 +99,21 @@ Not in scope for Milestone 1 — `self.history` in `agent.py` can grow unbounded
 - Past a token threshold, Anthropic automatically summarizes older conversation content server-side and returns a `compaction` content block in the response.
 - Hard requirement: the *full* `response.content` (not just the extracted text) must be appended back into history on the next request — the compaction block has to survive being stored and resent verbatim, or the mechanism breaks.
 
-**Open design question to resolve when we get here (deliberately not decided now):** this doesn't fit cleanly into the "`chat()` is a pure stateless translator" model established in Milestone 1, because the compaction block is opaque, Anthropic-specific state that needs to round-trip through our own `ChatMessage` history untouched. Two directions to weigh at that point, not now:
+**Open design question to resolve when we get here (deliberately not decided now):** this doesn't fit cleanly into the "`chat()` is a pure stateless translator" model, because the compaction block is opaque, Anthropic-specific state that needs to round-trip through our own `ChatMessage` history untouched. Two directions to weigh at that point, not now:
   - (a) give `ChatMessage`/`LLMResponse` an opaque passthrough field the adapter fills in and later reads back, without `agent.py` needing to know what's inside it, or
   - (b) let the adapter keep its own internal copy of history in native format, with our neutral `list[ChatMessage]` as an external-facing view rather than the source of truth.
 
   Either way, this is a provider-specific mechanism — a future OpenAI/other adapter without an equivalent feature would need its own strategy (e.g. plain trim-by-count), which is fine: `agent.py` shouldn't have to know or care which approach a given adapter uses, only that history stays within bounds.
 
-## Critical files
-- `pyproject.toml`
-- `src/jarvis/llm/base.py`, `src/jarvis/llm/anthropic_adapter.py`
-- `src/jarvis/agent.py`
-- `src/jarvis/tools/registry.py`
-- `src/jarvis/memory/store.py`
-- `config/config.example.yaml`
+## Future step: concurrent requests against one Agent (post–Milestone 1)
+
+Not a problem today — `cli.py`'s loop is strictly sequential (`input()` blocks until you type, `agent.step()` runs to completion before the next `input()` call), so `self.history` is only ever touched by one in-flight `step()` at a time.
+
+**Why this will matter later:** any future interface that can send a *second* message before the first response comes back (Telegram, a web chat) would mean two overlapping `agent.step()` calls running concurrently against the same `Agent`, both reading/appending to the same shared `self.history` list — a race condition. Worse, a naive "pop the last message on failure" approach (like `cli.py`'s current error handling) breaks under overlap: the last message in `self.history` might belong to the *other* in-flight request, not the one that actually failed.
+
+**Direction to take when this becomes real, not decided now:** serialize access per `Agent`/conversation — e.g. an `asyncio.Lock` so a second incoming message queues behind the first `step()` call instead of running concurrently, rather than trying to make concurrent history mutation itself safe.
+
+## Remaining files
+- `src/jarvis/agent.py` — in progress
+- `src/jarvis/memory/store.py` — not started
+- `src/jarvis/cli.py` — needs the Agent/ToolRegistry/MCPToolClient rewire described above

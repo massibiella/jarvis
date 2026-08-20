@@ -1,12 +1,10 @@
 """Provider-agnostic types for talking to an LLM.
 
-TODO (Step 3): everything above this file (Agent, CLI) only ever imports
-these types, never anything Anthropic-specific — that's what makes
-swapping or adding a provider later a one-file change instead of a
-rewrite. See docs/PLAN.md § "LLM adapter (provider-agnostic)".
-
-The dataclasses below are already the agreed shape — you shouldn't need
-to change them to implement AnthropicAdapter in llm/anthropic_adapter.py.
+Everything above this file (Agent, CLI) only ever imports these types,
+never anything provider-specific — that's what makes swapping or adding
+a provider a one-file change instead of a rewrite. See
+docs/ARCHITECTURE.md § "Components" for the full picture; the still-open
+adapter is `llm/adapters/anthropic_adapter.py`, unfinished/unregistered.
 """
 
 from __future__ import annotations
@@ -28,6 +26,9 @@ class ToolCallRequest:
     id: str
     name: str
     arguments: dict[str, Any]
+    raw: Any = None  # opaque provider-specific data (e.g. Gemini's thought_signature)
+    # that must round-trip back through history verbatim — see LLMResponse.raw for
+    # the same pattern, and docs/PLAN.md's compaction note for why this exists.
 
 
 @dataclass

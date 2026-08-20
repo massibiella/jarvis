@@ -1,6 +1,6 @@
 # Jarvis
 
-A personal assistant agent. See [`docs/PLAN.md`](docs/PLAN.md) for the current milestone's scope, architecture, and implementation order.
+A personal assistant agent. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's built today, and [`docs/PLAN.md`](docs/PLAN.md) for the current milestone's scope and implementation order.
 
 ## Setup
 
@@ -32,7 +32,3 @@ pytest
 ruff check .
 ruff format --check .
 ```
-
-## Status
-
-Milestone 1 (core agent skeleton) in progress. Config loading is implemented; the LLM adapter, agent loop, tool registry, and memory store are stubbed with `TODO`s — see `docs/PLAN.md` for what's next.

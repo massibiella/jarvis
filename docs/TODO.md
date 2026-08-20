@@ -15,7 +15,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [ ] Daily morning check-in (weather, news, investments, appointments)
 - [ ] Daily night check-in (what was done today, what's deferred)
 - [ ] Own reminders (independent of the user's calendar)
-- [ ] Web browsing / research
+- [x] Web browsing / research
 
 ## Nice to have
 - [ ] Mobile connection (e.g. message the user via Telegram)

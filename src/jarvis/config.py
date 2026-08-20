@@ -70,15 +70,23 @@ class LoggingConfig:
 class MCPServerConfig:
     """How to launch one MCP server as a subprocess (stdio transport).
 
-    `command` must point at a Python interpreter that has the server's own
-    dependencies installed (its venv), not just any Python on PATH — e.g.
-    ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"].
-    The server's code has to be physically present on this machine; see
-    docs/PLAN.md's "MCP integrations" section for the network-transport
-    alternative if that stops being true.
+    `command` must point at an interpreter/runner that has the server's own
+    dependencies available — a Python venv's python for a Python server
+    (e.g. ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"]),
+    or e.g. ["npx", "@cocal/google-calendar-mcp"] for an npm-distributed one.
+    The server's code has to be physically present/runnable on this
+    machine; see docs/PLAN.md's "MCP integrations" section for the
+    network-transport alternative if that stops being true.
+
+    `env` is optional extra environment variables passed to the subprocess
+    on top of the inherited default environment — some servers need this
+    for config the command line itself doesn't cover (e.g. Google Calendar
+    MCP's GOOGLE_OAUTH_CREDENTIALS, a path to a locally-downloaded OAuth
+    credentials file).
     """
 
     command: list[str]
+    env: dict[str, str] | None = None
 
 
 @dataclass
@@ -134,7 +142,10 @@ def _parse_mcp_servers(data: dict[str, Any]) -> dict[str, MCPServerConfig]:
     servers = {}
     for name, server_data in data.items():
         try:
-            servers[name] = MCPServerConfig(command=server_data["command"])
+            servers[name] = MCPServerConfig(
+                command=server_data["command"],
+                env=server_data.get("env"),
+            )
         except KeyError as e:
             raise ConfigError(f"Missing required mcp_servers.{name} field: {e}") from e
     return servers

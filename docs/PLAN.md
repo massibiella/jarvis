@@ -22,16 +22,26 @@ This is a learning project as much as a build. This plan file lives in the repo 
 4. **Multi-user readiness without building auth.** Memory is laid out under `users/<user_id>/` with `user_id` defaulting to `"default"` in config. This costs nothing now and avoids a data-layout migration when auth (a separate future milestone) lands.
 5. **Gemini over Anthropic as the first working provider.** Anthropic's API needs paid billing; Gemini has a usable free tier. `AnthropicAdapter` is left unfinished and unregistered until there's a reason to pay for API access — a sequencing choice, not a design problem. Note: Gemini's free tier allows prompt/response data to be used for training — revisit before Jarvis handles real personal/financial data (see the note in `gemini_adapter.py`).
 6. **Async end-to-end, decided ahead of actually needing it.** The MCP client SDK is fully async, and a persistent MCP connection can't be reused across separate `asyncio.run()` calls — asyncio resources are loop-affine, so spinning up a new event loop per call breaks a connection opened in a previous one. Rather than retrofit later, `cli.py`, `Agent.step`, and `ToolRegistry.execute` were all made async from the start.
-7. **MCP transport: stdio for now, not SSE/HTTP.** Servers Jarvis launches itself (like `weather-mcp`) run as local subprocesses — their code has to be physically present on whatever machine runs Jarvis. Fine since Jarvis runs on one machine; revisit with SSE/HTTP transport only if Jarvis and its MCP servers ever need to live on separate hosts.
+7. **MCP transport: stdio for now, not SSE/HTTP.** Servers Jarvis launches itself run as local subprocesses — their code has to be physically present on whatever machine runs Jarvis. Fine since Jarvis runs on one machine; revisit with SSE/HTTP transport only if Jarvis and its MCP servers ever need to live on separate hosts.
+8. **Weather moved off MCP, back to a native tool.** Originally built as `weather-mcp` (a standalone MCP server) specifically to learn how MCP itself works — a deliberate pedagogical choice, not a technical requirement. Reconsidered once Google Calendar became the real, ongoing MCP integration (a genuine third-party server, needs MCP): weather isn't meaningfully reused outside Jarvis in practice (unlike the abstract "any MCP client could use it" argument), and Calendar already exercises the MCP-client code path, so there's no remaining reason to pay subprocess/stdio overhead for what's really one simple HTTP call. Logic ported unchanged into `tools/weather_tools.py`; `weather-mcp` still exists standalone, just unused by Jarvis now. General takeaway: whether something belongs in its own MCP server or as a native tool comes down to "is this genuinely reusable outside Jarvis," not a fixed rule — decide per-tool, and it's fine to move a tool between the two if that answer changes.
+9. **`MCPServerConfig`/`MCPToolClient` gained `env` support.** The Google Calendar MCP server needs an OAuth credentials file path passed via a `GOOGLE_OAUTH_CREDENTIALS` environment variable — not something the command line itself covers. Added `env: dict[str, str] | None` to `MCPServerConfig`, passed through to `mcp.StdioServerParameters(env=...)`, which merges it with the subprocess's normal inherited environment rather than replacing it. Verified live with a throwaway test server before trusting it.
 
 ## MCP integrations (target list, tackle one at a time — user writes the code)
 
-Weather is done (see `ARCHITECTURE.md`). Two more targets, in order (both need Google OAuth — real setup friction, unlike weather):
+Weather is done, but as a **native tool**, not MCP (see Key Decisions #8 above and `ARCHITECTURE.md`). Two real MCP targets remain:
 
-1. **Google Calendar** — PRD item 1. Check for an existing community/official MCP server first rather than hand-rolling OAuth.
-2. **Google Maps / traffic (commute time)** — PRD item 15. Same "find an existing server first" approach.
+1. **Google Calendar** — PRD item 1, in progress. Chose the community server [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp) over Google's own official one — the official server (`calendarmcp.googleapis.com`) uses HTTP transport (which `MCPToolClient` doesn't support, only stdio) and its documented scopes look read-only (view/freebusy, no create/update/delete — the PRD needs full CRUD). The community server supports stdio, full read/write, and local one-time OAuth ("Desktop app" credential type, no hosted redirect URI needed) — matches what's already built with zero new transport code. Setup: Google Cloud Console project → enable Calendar API → OAuth client (Desktop app type, "User data" access) → download `gcp-oauth.keys.json` → add self as a test user under Audience. Wire into `config.yaml`:
+   ```yaml
+   mcp_servers:
+     calendar:
+       command: ["npx", "@cocal/google-calendar-mcp"]
+       env:
+         GOOGLE_OAUTH_CREDENTIALS: "/path/to/gcp-oauth.keys.json"
+   ```
+   Needs Node/npm installed (the server is distributed via `npx`, not Python — MCP servers can be any language, `MCPToolClient` is language-agnostic). Not yet wired/tested end-to-end — console setup was in progress when this was last worked on.
+2. **Google Maps / traffic (commute time)** — PRD item 15. Same "find an existing server first" approach, not started.
 
-For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project. Neither is designed yet.
+For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project.
 
 ## Memory (index + on-demand recall)
 

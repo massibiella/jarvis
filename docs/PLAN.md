@@ -30,15 +30,15 @@ This is a learning project as much as a build. This plan file lives in the repo 
 
 Weather is done, but as a **native tool**, not MCP (see Key Decisions #8 above and `ARCHITECTURE.md`). Two real MCP targets remain:
 
-1. **Google Calendar** — PRD item 1, in progress. Chose the community server [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp) over Google's own official one — the official server (`calendarmcp.googleapis.com`) uses HTTP transport (which `MCPToolClient` doesn't support, only stdio) and its documented scopes look read-only (view/freebusy, no create/update/delete — the PRD needs full CRUD). The community server supports stdio, full read/write, and local one-time OAuth ("Desktop app" credential type, no hosted redirect URI needed) — matches what's already built with zero new transport code. Setup: Google Cloud Console project → enable Calendar API → OAuth client (Desktop app type, "User data" access) → download `gcp-oauth.keys.json` → add self as a test user under Audience. Wire into `config.yaml`:
+1. **Google Calendar** — PRD item 1, wired and working. Chose the community server [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp) over Google's own official one — the official server (`calendarmcp.googleapis.com`) uses HTTP transport (which `MCPToolClient` doesn't support, only stdio) and its documented scopes look read-only (view/freebusy, no create/update/delete — the PRD needs full CRUD). The community server supports stdio, full read/write, and local one-time OAuth ("Desktop app" credential type, no hosted redirect URI needed) — matches what's already built with zero new transport code. Setup: Google Cloud Console project → enable Calendar API → OAuth client (Desktop app type, "User data" access) → download `gcp-oauth.keys.json` → add self as a test user under Audience. Wired into `config.yaml`:
    ```yaml
    mcp_servers:
      calendar:
-       command: ["npx", "@cocal/google-calendar-mcp"]
+       command: ["npx", "@cocal/google-calendar-mcp", "--enable-tools", "list-events,create-event,update-event,delete-event,get-freebusy,get-current-time"]
        env:
          GOOGLE_OAUTH_CREDENTIALS: "/path/to/gcp-oauth.keys.json"
    ```
-   Needs Node/npm installed (the server is distributed via `npx`, not Python — MCP servers can be any language, `MCPToolClient` is language-agnostic). Not yet wired/tested end-to-end — console setup was in progress when this was last worked on.
+   Needs Node/npm installed (the server is distributed via `npx`, not Python — MCP servers can be any language, `MCPToolClient` is language-agnostic). OAuth working, 6 tools enabled, schemas trimmed for `create-event`/`update-event`/`list-events` (see "Resolved: Google Calendar tool-schema cost" below). `create-event` verified live previously (a real event was created); manual re-verification of create/update/list against the new trimmed schemas specifically is still open.
 2. **Google Maps / traffic (commute time)** — PRD item 15. Same "find an existing server first" approach, not started.
 
 For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project.
@@ -124,6 +124,18 @@ Not a problem today — `cli.py`'s loop is strictly sequential (`input()` blocks
 
 **Direction to take when this becomes real, not decided now:** serialize access per `Agent`/conversation — e.g. an `asyncio.Lock` so a second incoming message queues behind the first `step()` call instead of running concurrently, rather than trying to make concurrent history mutation itself safe.
 
+## Resolved: Google Calendar tool-schema cost
+
+Was: `as_llm_tool_specs()` sends *every* registered tool's full JSON schema on *every single request*, regardless of whether that turn needs it. Measured live with Calendar's 7 tools registered: ~5,484 tokens of pure schema, every turn, dominated by 3 tools — `create-event` (47.5%), `update-event` (28.5%), `list-events` (10.9%), ~87% combined. Directly caused hitting Gemini's free-tier per-minute token quota during testing. First mitigation was Google Calendar's `--enable-tools` whitelist flag (13 → 7 tools, ~32% reduction) — a config change, no code.
+
+Considered and rejected as the real fix: general tool-relevance pre-filtering (deciding at request time which tools' schemas to even send). Explored a refined "try first with no schemas, ask for tool names only if needed" design — even that still costs 2 sequential LLM calls for any turn that genuinely needs a tool, because a tool's full schema has to be present in the same call that produces a structured `tool_call` for it. Since the real cost driver was 3 specific bloated schemas (not the number of tools), filtering would have added real complexity to `Agent.step()`'s loop to work around a much smaller, more direct problem.
+
+Fixed instead: `src/jarvis/tools/mcp_overrides.py` — hand-written, trimmed JSON schemas for `create-event`/`update-event`/`list-events`, keyed by `(server_name, tool_name)` so a same-named tool on a different future MCP server can't collide. Inspecting the real schemas showed most of the bulk was Google-Workspace-only fields (`focusTimeProperties`, `outOfOfficeProperties`, `workingLocationProperties`, `conferenceData`, `extendedProperties`, `attachments`, `source`) and edge cases (a 32-value `fields` enum on `list-events`, multi-account filtering) that don't apply to a personal account. `cli.py`'s `_mcp_tool_to_tool()` now takes `server_name` and uses `mcp_overrides.get_override()`'s schema when one exists, otherwise passes the MCP server's own schema through unchanged (every other tool, unaffected). The override only changes what schema the LLM sees — the tool call still goes to the real MCP server, validated against its full original schema, so nothing breaks. Result: Calendar's total tool-schema cost dropped from ~5,484 to ~1,511 tokens (72% reduction), measured the same way as the original diagnosis.
+
+**Remaining, not decided:** dropping `manage-accounts` (a setup-time tool for adding/removing Google accounts, not something the agent should call mid-conversation) from the registry entirely — the one real remaining reduction candidate; everything else left (`delete-event`, `get-freebusy`, `get-current-time`) was already small.
+
+**Still open, general problem for later:** every *new* tool (Maps, IBKR, etc.) still adds fixed per-turn cost regardless of relevance. This fix solved the actual instance that caused real pain, not the general "ship everything every turn" architecture — revisit only if/when a future tool turns out as bloated as Calendar's was.
+
 ## Remaining files
 
-None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory) and the two "Future step" sections above, both deliberately deferred.
+None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory), the two deferred "Future step" sections above (history management, concurrent requests), and manually re-verifying Calendar's create/update/list-event tools against the new trimmed schemas (code done, live re-test not yet run).

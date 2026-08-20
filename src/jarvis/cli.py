@@ -25,6 +25,7 @@ from jarvis.llm.base import ToolSpec
 from jarvis.llm.registry import get_adapter_class
 from jarvis.memory.store import MemoryStore
 from jarvis.tools.mcp_client import MCPToolClient
+from jarvis.tools.mcp_overrides import get_override
 from jarvis.tools.memory_tools import register_memory_tools
 from jarvis.tools.registry import Tool, ToolRegistry
 from jarvis.tools.weather_tools import register_weather_tools
@@ -40,16 +41,19 @@ def _load_system_prompt(config: JarvisConfig) -> str:
     return path.read_text()
 
 
-def _mcp_tool_to_tool(client: MCPToolClient, tool_spec: ToolSpec) -> Tool:
+def _mcp_tool_to_tool(server_name: str, client: MCPToolClient, tool_spec: ToolSpec) -> Tool:
     async def call(**kwargs):
         return await client.call_tool(tool_spec.name, kwargs)
+
+    parameters = get_override(server_name, tool_spec.name) or tool_spec.parameters
 
     return Tool(
         name=tool_spec.name,
         description=tool_spec.description,
-        parameters=tool_spec.parameters,
+        parameters=parameters,
         func=call,
     )
+
 
 async def _main() -> None:
     load_dotenv()
@@ -77,7 +81,7 @@ async def _main() -> None:
             tools_available = await client.list_tools()
             if tools_available:
                 for tool in tools_available:
-                    tools.add_tool(_mcp_tool_to_tool(client, tool))
+                    tools.add_tool(_mcp_tool_to_tool(server_name, client, tool))
 
         memory = MemoryStore(config.memory.root_dir, config.memory.user_id)
         register_memory_tools(tools, memory)
@@ -102,11 +106,7 @@ async def _main() -> None:
         # happy path, so a client never gets left dangling.
         for client in clients:
             await client.close()
-        
-    
 
-
-    
 
 def main() -> None:
     """Sync entry point for pyproject.toml's [project.scripts] — that entry

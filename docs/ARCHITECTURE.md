@@ -16,8 +16,11 @@ jarvis (console script)
     → register_weather_tools(tools)                 [tools/weather_tools.py] — native, no subprocess
     → for each config.mcp_servers entry (e.g. Google Calendar):
         MCPToolClient(...).connect() + list_tools()  [src/jarvis/tools/mcp_client.py]
-        → each discovered tool wrapped (_mcp_tool_to_tool) and
-          registered into a ToolRegistry                [src/jarvis/tools/registry.py]
+        → each discovered tool wrapped (_mcp_tool_to_tool) — swaps in a
+          trimmed schema from mcp_overrides.get_override() when one
+          exists for that (server_name, tool_name) [tools/mcp_overrides.py],
+          otherwise passes the MCP server's schema through unchanged —
+          and registered into a ToolRegistry             [src/jarvis/tools/registry.py]
     → MemoryStore(...) built + register_memory_tools(tools, memory)  [tools/memory_tools.py]
     → system prompt loaded (system_prompt.md, or config.agent.system_prompt_file if set)
     → Agent(adapter, tools, memory, system_prompt) built  [src/jarvis/agent.py]
@@ -50,6 +53,7 @@ jarvis/
 │   │   ├── schema.py                    # build_schema_from_signature(): inspect.signature -> JSON schema
 │   │   ├── registry.py                  # ToolRegistry: register/add_tool/execute/as_llm_tool_specs
 │   │   ├── mcp_client.py                # MCPToolClient: talks to one MCP server over stdio
+│   │   ├── mcp_overrides.py             # hand-written schema overrides for specific bloated MCP tools
 │   │   ├── memory_tools.py              # remember/list_memory/read_memory/search_memory, wrapping MemoryStore
 │   │   └── weather_tools.py             # get_current_weather — native, calls Open-Meteo directly
 │   └── memory/store.py                  # MemoryStore: read/write/append/load_index/search
@@ -66,6 +70,7 @@ jarvis/
 - `schema.py`'s `build_schema_from_signature()` turns a Python function's signature into a JSON Schema dict (`str`/`int`/`float`/`bool`, required-if-no-default).
 - `registry.py`'s `ToolRegistry` holds a `dict[str, Tool]` (`Tool` = name/description/parameters/func). `register()` is a decorator for native Python functions (uses `schema.py`); `add_tool()` takes an already-fully-described `Tool` directly (what MCP wiring will use). `execute()` calls a tool's `func` and handles both sync and async callables uniformly (`inspect.isawaitable` check). `as_llm_tool_specs()` converts everything registered into the `ToolSpec` list `LLMAdapter.chat()` expects.
 - `mcp_client.py`'s `MCPToolClient` wraps one MCP server subprocess (stdio transport): `connect()` (spawn + handshake, via `AsyncExitStack` so the connection survives past the method call), `list_tools()` (→ `list[ToolSpec]`), `call_tool()` (→ `str`), `close()`. Optionally passes extra environment variables to the subprocess (e.g. an OAuth credentials path) via `MCPServerConfig.env`. Verified end-to-end originally against `weather-mcp` (since moved off MCP, see below); the Google Calendar integration is the current real user of this path.
+- `mcp_overrides.py`'s `get_override(server_name, tool_name)` returns a hand-written, trimmed JSON schema for a specific MCP tool if one's registered, else `None`. Used by `cli.py`'s `_mcp_tool_to_tool()` to replace only what the LLM sees as a tool's schema — the tool call itself still goes to the real MCP server, validated against its own full original schema. Exists because some MCP servers ship far larger schemas than needed (Google Calendar's `create-event`/`update-event`/`list-events` — see `PLAN.md`'s "Resolved: Google Calendar tool-schema cost").
 
 **Agent (`agent.py`)** — owns `self.history: list[ChatMessage]` and runs the tool-calling loop: `step()` sends history + available tools to the adapter, executes any requested tool calls via `ToolRegistry`, feeds results back in, and repeats until the model answers in plain text. Implemented, wired into `cli.py`, and verified end-to-end against the real Gemini API with a real MCP tool call.
 

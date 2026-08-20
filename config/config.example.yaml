@@ -21,9 +21,12 @@ agent:
 # needs beyond what it inherits by default (e.g. a path to an OAuth
 # credentials file). Weather used to be here but was moved to a native
 # tool (src/jarvis/tools/weather_tools.py) — see docs/PLAN.md for why.
+# The --enable-tools whitelist below is a real, working example (Google
+# Calendar's default tool set is bigger and costs more tool-schema tokens
+# per turn than needed) — see docs/PLAN.md for the token-cost story.
 # mcp_servers:
 #   calendar:
-#     command: ["npx", "@cocal/google-calendar-mcp"]
+#     command: ["npx", "@cocal/google-calendar-mcp", "--enable-tools", "list-events,create-event,update-event,delete-event,get-freebusy,get-current-time"]
 #     env:
 #       GOOGLE_OAUTH_CREDENTIALS: "/path/to/gcp-oauth.keys.json"
 

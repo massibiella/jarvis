@@ -22,14 +22,33 @@ from jarvis.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
-_SEARCH_URL = "https://api.tavily.com/search"
-_EXTRACT_URL = "https://api.tavily.com/extract"
+_BASE_URL = "https://api.tavily.com"
 _MAX_FETCH_CHARS = 4000
 
 
-def _auth_header() -> str | None:
+async def _tavily_request(endpoint: str, payload: dict, error_context: str) -> dict | str:
+    """POST to a Tavily endpoint. Returns the parsed JSON on success, or a
+    user-facing error string (unconfigured key / HTTP failure) on failure —
+    callers check `isinstance(result, str)` to tell the two apart."""
     api_key = os.environ.get("TAVILY_API_KEY")
-    return f"Bearer {api_key}" if api_key else None
+    if not api_key:
+        return (
+            "Web browsing is not configured: set the TAVILY_API_KEY "
+            "environment variable (see .env.example)."
+        )
+
+    try:
+        async with httpx2.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{_BASE_URL}{endpoint}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx2.HTTPError as e:
+        logger.error("Tavily %s failed for %s: %s", endpoint, error_context, e)
+        return f"Sorry, {error_context} failed right now."
 
 
 def register_web_browsing_tools(tools: ToolRegistry) -> None:
@@ -40,25 +59,13 @@ def register_web_browsing_tools(tools: ToolRegistry) -> None:
         list of results (title, URL, snippet) — use fetch_webpage on one of
         the URLs to read the full page. count: how many results (default 5,
         max 20)."""
-        auth = _auth_header()
-        if not auth:
-            return (
-                "Web search is not configured: set the TAVILY_API_KEY "
-                "environment variable (see .env.example)."
-            )
-
-        try:
-            async with httpx2.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    _SEARCH_URL,
-                    headers={"Authorization": auth},
-                    json={"query": query, "max_results": max(1, min(count, 20))},
-                )
-                response.raise_for_status()
-                data = response.json()
-        except httpx2.HTTPError as e:
-            logger.error("Web search failed for %r: %s", query, e)
-            return f"Sorry, the web search for '{query}' failed right now."
+        data = await _tavily_request(
+            "/search",
+            {"query": query, "max_results": max(1, min(count, 20))},
+            f"the web search for '{query}'",
+        )
+        if isinstance(data, str):
+            return data
 
         results = data.get("results", [])
         if not results:
@@ -74,25 +81,11 @@ def register_web_browsing_tools(tools: ToolRegistry) -> None:
         """Fetch a webpage and return its text content, for reading an
         article or page (e.g. one found via web_search). Truncated to a
         few thousand characters — for reading one page, not crawling a site."""
-        auth = _auth_header()
-        if not auth:
-            return (
-                "Web browsing is not configured: set the TAVILY_API_KEY "
-                "environment variable (see .env.example)."
-            )
-
-        try:
-            async with httpx2.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    _EXTRACT_URL,
-                    headers={"Authorization": auth},
-                    json={"urls": url, "format": "text"},
-                )
-                response.raise_for_status()
-                data = response.json()
-        except httpx2.HTTPError as e:
-            logger.error("Failed to fetch %r: %s", url, e)
-            return f"Sorry, couldn't fetch '{url}' right now."
+        data = await _tavily_request(
+            "/extract", {"urls": url, "format": "text"}, f"fetching '{url}'"
+        )
+        if isinstance(data, str):
+            return data
 
         results = data.get("results", [])
         if not results:

@@ -4,7 +4,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 
 - [x] LLM-agnostic (works with any LLM given a config file) — provider adapter pattern; `GeminiAdapter` working end to end, `AnthropicAdapter` partial
 - [x] Local weather — native tool (`tools/weather_tools.py`, Open-Meteo, no key). Originally an MCP server (`weather-mcp`), moved to native once Google Calendar became the real MCP use case — see `PLAN.md`. Verified live: `jarvis` answers real weather questions end to end.
-- [ ] Google/Apple Calendar (view/create/delete/update/remind/reorganize) — MCP-based, needs Google OAuth
+- [ ] Google/Apple Calendar (view/create/delete/update/remind/reorganize) — Google side wired: OAuth done, MCP server (`@cocal/google-calendar-mcp`) connected with 6 tools enabled, schemas trimmed for cost (`tools/mcp_overrides.py`, see `PLAN.md`). `create-event` verified live previously; full re-verification against the new trimmed schemas still pending. Apple Calendar not started.
 - [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR
 - [ ] Newsletter updates (investments + interest categories)

@@ -28,6 +28,7 @@ from jarvis.tools.mcp_client import MCPToolClient
 from jarvis.tools.memory_tools import register_memory_tools
 from jarvis.tools.registry import Tool, ToolRegistry
 from jarvis.tools.weather_tools import register_weather_tools
+from jarvis.tools.web_browsing_tools import register_web_browsing_tools
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ async def _main() -> None:
 
     tools = ToolRegistry()
     register_weather_tools(tools)
+    register_web_browsing_tools(tools)
     clients = []
 
     try:

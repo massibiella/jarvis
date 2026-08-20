@@ -1,16 +1,10 @@
 """Native web-browsing/research tools: search the web and read a page.
 
 Same shape as weather_tools.py — a plain native tool hitting an HTTP API
-directly, no MCP subprocess. There's no reliable keyless general web-search
-API: DuckDuckGo's Instant Answer API only covers well-known entities (empty
-for most real queries), and scraping its HTML results page gets
-CAPTCHA-blocked. Brave Search API dropped its free tier in Feb 2026 (now
-card + metered billing). Landed on Tavily: free tier is 1,000 credits/month,
-recurring, one API key (TAVILY_API_KEY).
-
-Tavily also has a purpose-built /extract endpoint (returns a page's content
-pre-cleaned to markdown/text server-side), so one provider/API key covers
-both search and page-reading — no local HTML-stripping needed.
+directly, no MCP subprocess. Backend is Tavily (TAVILY_API_KEY): /search for
+web_search, /extract for fetch_webpage — one API key covers both, and
+/extract returns page content pre-cleaned to text server-side, so no local
+HTML-stripping is needed.
 
 web_search finds pages; fetch_webpage reads one found by search (or
 mentioned by the user) in full. Together they cover "research" (find +

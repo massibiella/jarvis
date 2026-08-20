@@ -15,11 +15,17 @@ agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
 
 # Each entry launches an MCP server as a subprocess (stdio transport).
-# command[0] must be the server's own venv Python, not a bare "python" —
-# it needs that server's dependencies installed, not Jarvis's.
+# command[0] must be the server's own venv Python (or e.g. "npx" for an
+# npm-distributed server) — it needs that server's own dependencies, not
+# Jarvis's. `env` is optional — extra environment variables the subprocess
+# needs beyond what it inherits by default (e.g. a path to an OAuth
+# credentials file). Weather used to be here but was moved to a native
+# tool (src/jarvis/tools/weather_tools.py) — see docs/PLAN.md for why.
 # mcp_servers:
-#   weather:
-#     command: ["/path/to/weather-mcp/.venv/bin/python", "/path/to/weather-mcp/weather.py"]
+#   calendar:
+#     command: ["npx", "@cocal/google-calendar-mcp"]
+#     env:
+#       GOOGLE_OAUTH_CREDENTIALS: "/path/to/gcp-oauth.keys.json"
 
 logging:
   level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces

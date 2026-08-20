@@ -20,18 +20,20 @@ from jarvis.llm.base import ToolSpec
 logger = logging.getLogger(__name__)
 
 class MCPToolClient:
-    def __init__(self, name: str, command: list[str]) -> None:
+    def __init__(self, name: str, command: list[str], env: dict[str, str] | None = None) -> None:
         self.name = name
         self.command = command
+        self.env = env
         self._session: mcp.ClientSession | None = None
         self._exit_stack = AsyncExitStack()
-        
+
     async def connect(self) -> None:
         """Launch the subprocess and open an MCP ClientSession over it."""
 
         params = mcp.StdioServerParameters(
             command=self.command[0],
             args=self.command[1:],
+            env=self.env,
         )
 
         read, write = await self._exit_stack.enter_async_context(mcp.stdio_client(params))

@@ -27,6 +27,7 @@ from jarvis.memory.store import MemoryStore
 from jarvis.tools.mcp_client import MCPToolClient
 from jarvis.tools.memory_tools import register_memory_tools
 from jarvis.tools.registry import Tool, ToolRegistry
+from jarvis.tools.weather_tools import register_weather_tools
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,13 @@ async def _main() -> None:
     adapter = adapter_cls.from_config(config.llm)
 
     tools = ToolRegistry()
+    register_weather_tools(tools)
     clients = []
 
     try:
         # Get all the tools from each MCP server, and register them
         for server_name, mcp_server_config in config.mcp_servers.items():
-            client = MCPToolClient(server_name, mcp_server_config.command)
+            client = MCPToolClient(server_name, mcp_server_config.command, mcp_server_config.env)
             await client.connect()
             clients.append(client)
 

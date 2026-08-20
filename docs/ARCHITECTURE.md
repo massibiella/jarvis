@@ -4,7 +4,7 @@ This is a snapshot of how Jarvis actually works *today* — present tense, no TO
 
 ## What runs today
 
-`jarvis` (installed via `pyproject.toml`'s `[project.scripts]`) is a working terminal chat agent: it loads config, launches every configured MCP server and registers its tools, builds an `Agent`, and runs a chat loop through `Agent.step()` — so the model can actually call real tools (e.g. `get_current_weather` via `weather-mcp`) and use the result to answer. Verified live end-to-end.
+`jarvis` (installed via `pyproject.toml`'s `[project.scripts]`) is a working terminal chat agent: it loads config, registers native tools (weather, memory), launches every configured MCP server and registers its tools too, builds an `Agent`, and runs a chat loop through `Agent.step()` — so the model can actually call real tools and use the result to answer. Verified live end-to-end.
 
 ## Request flow, as it exists right now
 
@@ -13,7 +13,8 @@ jarvis (console script)
   → src/jarvis/cli.py: main() → asyncio.run(_main())
     → load_dotenv() + load_config()                [src/jarvis/config.py]
     → get_adapter_class(...) + adapter.from_config  [src/jarvis/llm/registry.py, adapters/gemini_adapter.py]
-    → for each config.mcp_servers entry:
+    → register_weather_tools(tools)                 [tools/weather_tools.py] — native, no subprocess
+    → for each config.mcp_servers entry (e.g. Google Calendar):
         MCPToolClient(...).connect() + list_tools()  [src/jarvis/tools/mcp_client.py]
         → each discovered tool wrapped (_mcp_tool_to_tool) and
           registered into a ToolRegistry                [src/jarvis/tools/registry.py]
@@ -32,7 +33,7 @@ jarvis (console script)
 
 ```
 jarvis/
-├── pyproject.toml              # deps: anthropic, google-genai, pyyaml, python-dotenv, mcp
+├── pyproject.toml              # deps: anthropic, google-genai, pyyaml, python-dotenv, mcp, httpx2
 ├── config/config.example.yaml  # template; real config.yaml is gitignored, per-machine
 ├── src/jarvis/
 │   ├── config.py                        # JarvisConfig dataclasses + load_config()
@@ -49,7 +50,8 @@ jarvis/
 │   │   ├── schema.py                    # build_schema_from_signature(): inspect.signature -> JSON schema
 │   │   ├── registry.py                  # ToolRegistry: register/add_tool/execute/as_llm_tool_specs
 │   │   ├── mcp_client.py                # MCPToolClient: talks to one MCP server over stdio
-│   │   └── memory_tools.py              # remember/list_memory/read_memory/search_memory, wrapping MemoryStore
+│   │   ├── memory_tools.py              # remember/list_memory/read_memory/search_memory, wrapping MemoryStore
+│   │   └── weather_tools.py             # get_current_weather — native, calls Open-Meteo directly
 │   └── memory/store.py                  # MemoryStore: read/write/append/load_index/search
 └── tests/test_config.py                 # only module with automated tests so far
 ```
@@ -63,7 +65,7 @@ jarvis/
 **Tools (`tools/`)** — three pieces, wired together and into `Agent` via `cli.py`:
 - `schema.py`'s `build_schema_from_signature()` turns a Python function's signature into a JSON Schema dict (`str`/`int`/`float`/`bool`, required-if-no-default).
 - `registry.py`'s `ToolRegistry` holds a `dict[str, Tool]` (`Tool` = name/description/parameters/func). `register()` is a decorator for native Python functions (uses `schema.py`); `add_tool()` takes an already-fully-described `Tool` directly (what MCP wiring will use). `execute()` calls a tool's `func` and handles both sync and async callables uniformly (`inspect.isawaitable` check). `as_llm_tool_specs()` converts everything registered into the `ToolSpec` list `LLMAdapter.chat()` expects.
-- `mcp_client.py`'s `MCPToolClient` wraps one MCP server subprocess (stdio transport): `connect()` (spawn + handshake, via `AsyncExitStack` so the connection survives past the method call), `list_tools()` (→ `list[ToolSpec]`), `call_tool()` (→ `str`), `close()`. Verified end-to-end against the real [`weather-mcp`](https://github.com/massibiella/weather-mcp) server.
+- `mcp_client.py`'s `MCPToolClient` wraps one MCP server subprocess (stdio transport): `connect()` (spawn + handshake, via `AsyncExitStack` so the connection survives past the method call), `list_tools()` (→ `list[ToolSpec]`), `call_tool()` (→ `str`), `close()`. Optionally passes extra environment variables to the subprocess (e.g. an OAuth credentials path) via `MCPServerConfig.env`. Verified end-to-end originally against `weather-mcp` (since moved off MCP, see below); the Google Calendar integration is the current real user of this path.
 
 **Agent (`agent.py`)** — owns `self.history: list[ChatMessage]` and runs the tool-calling loop: `step()` sends history + available tools to the adapter, executes any requested tool calls via `ToolRegistry`, feeds results back in, and repeats until the model answers in plain text. Implemented, wired into `cli.py`, and verified end-to-end against the real Gemini API with a real MCP tool call.
 
@@ -73,7 +75,7 @@ jarvis/
 
 Files aren't freely named by the model — writes go through `tools/memory_tools.py`'s `remember(category, text)` tool, restricted to a small fixed set of categories (`facts`, `preferences`), each with a description written once in code (`_CATEGORY_DESCRIPTIONS`), not invented per-call by the model. This was a deliberate choice (see `PLAN.md`'s "Memory" section) — an undescribed file is invisible to the model's own reasoning about what's worth reading, and free-form category creation makes that hard to guarantee. `list_memory`/`read_memory`/`search_memory` are the read-side counterparts, thin wrappers over the same store. `Agent.__init__` appends `memory.load_index()` to the system prompt at startup, so the model always knows what's been remembered without loading full contents by default.
 
-**weather-mcp** — not part of this repo. A separate, standalone MCP server ([github.com/massibiella/weather-mcp](https://github.com/massibiella/weather-mcp)) exposing one tool, `get_current_weather`, via the Open-Meteo API. Runs as its own subprocess, launched by `MCPToolClient` per the `mcp_servers.weather` entry in `config.yaml`.
+**Weather (`tools/weather_tools.py`)** — `get_current_weather(location)`, a native tool calling Open-Meteo's geocoding + forecast APIs directly (`httpx2`). Originally built as a standalone MCP server ([weather-mcp](https://github.com/massibiella/weather-mcp), kept for reference/reuse elsewhere) and moved to a native tool once Google Calendar became the real, ongoing MCP integration — weather isn't reused outside Jarvis in practice, so there was no remaining reason to pay subprocess overhead for one simple HTTP call (see `PLAN.md`'s "Key decisions" for the full reasoning). Logic ported unchanged: same WMO weather-code mapping, same `httpx2.HTTPError`-specific error handling.
 
 ## Known gaps (today, not a roadmap — see PLAN.md for that)
 

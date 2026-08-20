@@ -3,7 +3,7 @@
 Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature is actually usable, not just started. See `PLAN.md` for the current milestone's implementation details and in-progress work.
 
 - [x] LLM-agnostic (works with any LLM given a config file) — provider adapter pattern; `GeminiAdapter` working end to end, `AnthropicAdapter` partial
-- [x] Local weather — MCP server (`weather-mcp`, Open-Meteo, no key), wired into `Agent`/`cli.py` via `ToolRegistry`/`MCPToolClient`. Verified live: `jarvis` answers real weather questions end to end.
+- [x] Local weather — native tool (`tools/weather_tools.py`, Open-Meteo, no key). Originally an MCP server (`weather-mcp`), moved to native once Google Calendar became the real MCP use case — see `PLAN.md`. Verified live: `jarvis` answers real weather questions end to end.
 - [ ] Google/Apple Calendar (view/create/delete/update/remind/reorganize) — MCP-based, needs Google OAuth
 - [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR
@@ -21,3 +21,4 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [ ] Mobile connection (e.g. message the user via Telegram)
 - [ ] GraphDB for facts and relationships. Other ideas?
 - [ ] Auto-summarize a session into MemoryStore on exit (or periodically) — the agent can already decide *during* a conversation that something's worth remembering (via the `remember` tool), but nothing catches things it didn't explicitly flag in the moment. Different problem from the in-session compaction note in PLAN.md (that's about one long conversation not overflowing context; this is about remembering *across* separate runs of `jarvis`).
+- [ ] `system_prompt.md` needs real guardrails on the `remember` tool — right now it has zero judgment about whether something's actually worth persisting beyond "durable vs one-off." Live-tested: joke/non-serious content fed to it got saved into `memory_facts.md` as if it were real. Needs explicit instruction not to remember things said in jest/testing, and/or a check before persisting.

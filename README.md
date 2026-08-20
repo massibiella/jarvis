@@ -16,14 +16,9 @@ cp .env.example .env   # then fill in your real API keys — .env is gitignored
 
 ### MCP servers (optional)
 
-Tools that live in a separate MCP server (e.g. [weather-mcp](https://github.com/massibiella/weather-mcp)) must be cloned and set up on this machine too — Jarvis launches them as a local subprocess, it doesn't fetch them:
+Weather is a built-in native tool, no setup needed. For tools that live in a separate MCP server (e.g. Google Calendar via [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp), run via `npx`) — Jarvis launches them as a local subprocess, it doesn't fetch them, so the server itself must be runnable on this machine first (a local clone for a Python server, or Node/npm installed for an npm-distributed one like the calendar server).
 
-```bash
-git clone https://github.com/massibiella/weather-mcp ../weather-mcp
-cd ../weather-mcp && python3 -m venv .venv && source .venv/bin/activate && pip install "mcp[cli]"
-```
-
-Then point `config.yaml`'s `mcp_servers` section at that venv's Python — see `config/config.example.yaml` for the format.
+Then add it to `config.yaml`'s `mcp_servers` section — see `config/config.example.yaml` for the format, and `docs/PLAN.md`'s "MCP integrations" section for the calendar server's specific Google Cloud Console setup steps.
 
 ## Development
 

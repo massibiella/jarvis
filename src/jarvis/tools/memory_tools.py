@@ -1,8 +1,8 @@
 """Native tools wrapping MemoryStore, registered into a ToolRegistry.
 
-Kept separate from cli.py — same reasoning as MCP tools living in their
-own file (weather-mcp), not inline in the entry point. cli.py's job is
-wiring things together, not defining feature/tool logic.
+Kept separate from cli.py — same reasoning as weather_tools.py living in
+its own file, not inline in the entry point. cli.py's job is wiring
+things together, not defining feature/tool logic.
 """
 
 from __future__ import annotations

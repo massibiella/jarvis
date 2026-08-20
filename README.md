@@ -20,6 +20,8 @@ Weather is a built-in native tool, no setup needed. For tools that live in a sep
 
 Then add it to `config.yaml`'s `mcp_servers` section — see `config/config.example.yaml` for the format, and `docs/PLAN.md`'s "MCP integrations" section for the calendar server's specific Google Cloud Console setup steps.
 
+For the calendar server specifically, you also need to authenticate once before first use — run `npx @cocal/google-calendar-mcp auth`, it opens a browser link to sign in and grant access, and caches the resulting token locally. `jarvis` itself won't prompt for this; if calendar tools fail with an auth error, this is the step to (re-)run.
+
 ## Development
 
 ```bash

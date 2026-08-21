@@ -26,7 +26,7 @@ from jarvis.llm.registry import get_adapter_class
 from jarvis.memory.store import MemoryStore
 from jarvis.tools.maps_tools import register_maps_tools
 from jarvis.tools.mcp_client import MCPToolClient
-from jarvis.tools.mcp_overrides import get_override
+from jarvis.tools.mcp_overrides import get_override, is_allowed
 from jarvis.tools.memory_tools import register_memory_tools
 from jarvis.tools.registry import Tool, ToolRegistry
 from jarvis.tools.weather_tools import register_weather_tools
@@ -90,14 +90,20 @@ async def _main() -> None:
     try:
         # Get all the tools from each MCP server, and register them
         for server_name, mcp_server_config in config.mcp_servers.items():
-            client = MCPToolClient(server_name, mcp_server_config.command, mcp_server_config.env)
+            client = MCPToolClient(
+                server_name,
+                command=mcp_server_config.command,
+                env=mcp_server_config.env,
+                url=mcp_server_config.url,
+            )
             await client.connect()
             clients.append(client)
 
             tools_available = await client.list_tools()
             if tools_available:
                 for tool in tools_available:
-                    tools.add_tool(_mcp_tool_to_tool(server_name, client, tool))
+                    if is_allowed(server_name, tool.name):
+                        tools.add_tool(_mcp_tool_to_tool(server_name, client, tool))
 
         memory = MemoryStore(config.memory.root_dir, config.memory.user_id)
         register_memory_tools(tools, memory)

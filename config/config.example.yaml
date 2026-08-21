@@ -14,21 +14,26 @@ memory:
 agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
 
-# Each entry launches an MCP server as a subprocess (stdio transport).
+# Each entry is either a local subprocess (stdio transport, `command`) or a
+# remote server (Streamable HTTP + OAuth, `url`) — exactly one of the two.
 # command[0] must be the server's own venv Python (or e.g. "npx" for an
 # npm-distributed server) — it needs that server's own dependencies, not
 # Jarvis's. `env` is optional — extra environment variables the subprocess
 # needs beyond what it inherits by default (e.g. a path to an OAuth
-# credentials file). Weather used to be here but was moved to a native
-# tool (src/jarvis/tools/weather_tools.py) — see docs/PLAN.md for why.
-# The --enable-tools whitelist below is a real, working example (Google
-# Calendar's default tool set is bigger and costs more tool-schema tokens
-# per turn than needed) — see docs/PLAN.md for the token-cost story.
+# credentials file), only meaningful alongside `command`. Weather used to
+# be here but was moved to a native tool (src/jarvis/tools/weather_tools.py)
+# — see docs/PLAN.md for why. The --enable-tools whitelist below is a real,
+# working example (Google Calendar's default tool set is bigger and costs
+# more tool-schema tokens per turn than needed) — see docs/PLAN.md for the
+# token-cost story. A `url` entry needs no local process — Jarvis opens a
+# browser itself for one-time OAuth on first connect (see README.md).
 # mcp_servers:
 #   calendar:
 #     command: ["npx", "@cocal/google-calendar-mcp", "--enable-tools", "list-events,create-event,update-event,delete-event,get-freebusy,get-current-time"]
 #     env:
 #       GOOGLE_OAUTH_CREDENTIALS: "/path/to/gcp-oauth.keys.json"
+#   ibkr:
+#     url: "https://api.ibkr.com/v1/api/mcp-public"
 
 logging:
   level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces

@@ -6,10 +6,10 @@ canvas-based, audio-reactive "orb" that visualizes assistant state
 (idle / listening / thinking / speaking), voice input via the browser's
 Speech Recognition API, and a text input as a fully-functional fallback.
 
-There is no agent/reasoning backend wired in yet — see
-[`src/lib/backend.ts`](src/lib/backend.ts). This document covers the
-frontend's internals: folder structure, what each file does and why it's
-there, data flow, and known quirks/tradeoffs.
+Talks to the real Jarvis agent backend (`../src/jarvis/`) over HTTP — see
+[`src/lib/backend.ts`](src/lib/backend.ts)'s `getAgentResponse()`. This
+document covers the frontend's internals: folder structure, what each file
+does and why it's there, data flow, and known quirks/tradeoffs.
 
 ## Running it
 
@@ -18,9 +18,12 @@ npm install
 npm run dev
 ```
 
-The app expects a local Piper TTS server for voice output — see
-[`../voice-server/README.md`](../voice-server/README.md). Without it, text
-input still works but `speak()` calls will fail.
+The app expects the Jarvis agent backend (`jarvis-server`, see the root
+[`README.md`](../README.md)) for chat, and a local Piper TTS server for
+voice output — see [`../voice-server/README.md`](../voice-server/README.md).
+Without the agent backend, sending a message shows an error instead of a
+reply; without the voice server, replies still render as text but
+`speak()` calls will fail.
 
 ## Testing
 
@@ -70,8 +73,8 @@ frontend/
 │       │                            (AudioEngine) + browser speech-to-text
 │       │                            (useSpeechRecognition)
 │       ├── backend.ts                calls OUT: Piper TTS request (speak)
-│       │                            + the placeholder "reasoning" response
-│       │                            (getStubResponse)
+│       │                            + the Jarvis agent backend's /chat
+│       │                            request (getAgentResponse)
 │       └── greeting.ts               pure time-of-day greeting text
 │                                     (getGreeting) — App.tsx speaks it via
 │                                     speak() once on mount
@@ -126,7 +129,9 @@ than owning its own:
    schedule the greeting twice.
 1. User speaks (mic, via `useSpeechRecognition`) or types → `respond()` in
    `App.tsx` fires.
-2. State → `thinking`, text goes to `getStubResponse()` (`lib/backend.ts`).
+2. State → `thinking`, text goes to `getAgentResponse()` (`lib/backend.ts`),
+   which POSTs to the Jarvis agent backend's `/chat` endpoint
+   (`../src/jarvis/server.py`) — the real tool-calling loop, not a stub.
 3. Reply comes back, state → `speaking`, reply goes to `speak()`, which
    POSTs to the voice-server and plays the returned WAV.
 4. `Orb` reads `AssistantState` as a prop and re-renders its `<canvas>`
@@ -174,10 +179,9 @@ the launch greeting used to clip the "Good" off "Good evening, Sir." — see
   a fully offline pipeline matters later. `isSupported` in
   `useSpeechRecognition` is `false` on any non-Chromium browser — the mic
   button disables itself and the text field becomes the only input path.
-- **`getStubResponse()` is a placeholder**, not a real design to extend —
-  it exists purely to close the voice/orb loop before an actual agent
-  backend is wired in (see root [`../README.md`](../README.md)'s "Known
-  gaps"). Once that backend exists, this function gets deleted, not grown.
+- **No streaming.** `getAgentResponse()` awaits the full reply before
+  returning — the HUD sits in `thinking` for the whole round trip, since
+  neither `Agent.step()` nor the LLM adapters stream tokens yet.
 - **Canvas components (`Orb`, `MindMap`) no-op under jsdom** — `getContext`
   returns `null` in the test environment, and both components already
   handle that by skipping their draw loop entirely. That's why their tests

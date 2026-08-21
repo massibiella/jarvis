@@ -10,7 +10,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [x] Investment portal via IBKR — read-only, wired against IBKR's official hosted MCP connector (remote, OAuth 2.1; `tools/mcp_oauth.py`, `tools/mcp_overrides/ibkr.py`, see `PLAN.md`). Read-only enforced by both OAuth scope and a tool allowlist. Verified live against a real account, including silent token refresh after expiry.
 - [ ] Newsletter updates (investments + interest categories)
 - [x] Memory files (persistent, cross-session) — `MemoryStore` fully implemented (read/write/append/load_index/search) and wired into `Agent`/`cli.py`. Agent has `remember`/`list_memory`/`read_memory`/`search_memory` tools and decides on its own when something's worth remembering, restricted to two categories (facts, preferences) — see `PLAN.md` for why. Verified live end-to-end.
-- [x] JARVIS-style frontend
+- [x] JARVIS-style frontend — connected to the real agent backend over HTTP (`src/jarvis/server.py`, `jarvis-server`), not the old in-browser stub. Verified live: text input round-trips through `Agent.step()` and renders the real reply.
 - [ ] Multi-user auth — memory layout is already auth-ready (`users/<user_id>/`), auth itself not built
 - [ ] Security — ongoing, no dedicated pass yet
 - [ ] Daily morning check-in (weather, news, investments, appointments)

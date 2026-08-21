@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getStubResponse } from "../../src/lib/backend";
+import { getAgentResponse } from "../../src/lib/backend";
 
 // backend.ts always imports voice.ts (for audioEngine.connectElement); stub
 // it out so these tests never touch the real Web Audio API.
@@ -8,27 +8,39 @@ vi.mock("../../src/lib/voice", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// getStubResponse: pure placeholder "reasoning" — no network involved.
+// getAgentResponse: POSTs to the Jarvis agent backend's /chat endpoint.
+// fetch is faked so no real network is used.
 // ---------------------------------------------------------------------------
-describe("getStubResponse", () => {
-  it("greets on hello", async () => {
-    await expect(getStubResponse("Hello!")).resolves.toMatch(/online/i);
+describe("getAgentResponse", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it("flags weather as not wired up yet", async () => {
-    await expect(getStubResponse("what's the weather")).resolves.toMatch(/weather/i);
+  it("posts the text to the chat endpoint and returns the reply", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ reply: "Hello, Sir." }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getAgentResponse("hello jarvis")).resolves.toBe("Hello, Sir.");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/chat"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ text: "hello jarvis" }),
+      })
+    );
   });
 
-  it("answers identity questions", async () => {
-    await expect(getStubResponse("who are you")).resolves.toMatch(/jarvis/i);
-  });
+  it("rejects when the agent server responds with an error status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Error" })
+    );
 
-  it("asks the user to repeat blank input", async () => {
-    await expect(getStubResponse("   ")).resolves.toMatch(/didn't catch/i);
-  });
-
-  it("echoes anything it doesn't recognize", async () => {
-    await expect(getStubResponse("do my taxes")).resolves.toContain('"do my taxes"');
+    await expect(getAgentResponse("hi")).rejects.toThrow(/Agent server error/);
   });
 });
 

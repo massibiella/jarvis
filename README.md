@@ -36,9 +36,9 @@ ruff format --check .
 
 Milestone 1 (core agent skeleton) in progress. Config loading is implemented; the LLM adapter, agent loop, tool registry, and memory store are stubbed with `TODO`s — see `docs/PLAN.md` for what's next.
 
-## Front-End HUD (v1 prototype)
+## Front-End HUD
 
-First pass at the JARVIS-style interface described in [PRD.md](PRD.md) §4.5 and §4.12 — scoped to the front-end and voice pipeline only, no agent/reasoning backend wired in yet (see `frontend/src/lib/backend.ts`).
+The JARVIS-style interface described in [PRD.md](PRD.md) §4.5 and §4.12, talking to the real agent backend (`src/jarvis/agent.py`) over HTTP — not a stub.
 
 ### What's here
 
@@ -48,20 +48,23 @@ First pass at the JARVIS-style interface described in [PRD.md](PRD.md) §4.5 and
 ### Running it
 
 ```sh
-# Terminal 1 — voice server
+# Terminal 1 — agent backend (needs config.yaml + .env set up per Setup above)
+jarvis-server
+
+# Terminal 2 — voice server
 cd voice-server
 python -m venv .venv
 ./.venv/Scripts/python -m pip install -r requirements.txt
 # download the voice model — see voice-server/README.md
 ./.venv/Scripts/python server.py
 
-# Terminal 2 — frontend
+# Terminal 3 — frontend
 cd frontend
 npm install
 npm run dev
 ```
 
-Open the printed local URL. Click **Speak** (Chrome/Edge required for voice input) or type into the text field — either path goes through the same stub-response → Piper TTS → orb-reacts-to-audio loop.
+Open the printed local URL. Click **Speak** (Chrome/Edge required for voice input) or type into the text field — either path goes through the same real agent (`jarvis-server`'s `/chat`, tool-calling included) → Piper TTS → orb-reacts-to-audio loop. Without `jarvis-server` running, typed/spoken input still shows in the transcript but the request fails; without the voice server, replies still render as text but `speak()` fails silently in the console.
 
 ### Tests
 
@@ -77,6 +80,6 @@ cd voice-server
 
 ### Known gaps (expected at this stage)
 
-- No real reasoning/agent backend — responses are canned placeholders.
-- No auth/multi-user support yet (PRD §4.6).
+- No auth/multi-user support yet (PRD §4.6) — `jarvis-server` runs one shared `Agent`/conversation for the whole process, not one per browser client.
+- No streaming — the HUD's "Thinking…" state holds until the full reply is ready; the LLM adapters don't stream tokens yet.
 - STT uses the browser's built-in Speech Recognition API, which is convenient for a v1 demo but not itself open-source/local; a Whisper-based swap is the likely upgrade path if a fully local STT+TTS pipeline is wanted later.

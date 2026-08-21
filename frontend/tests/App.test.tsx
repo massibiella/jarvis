@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest";
 import App, { GREETING_DELAY_MS } from "../src/App";
 
-// Isolate App's own state/wiring from the network call and the stub
-// "reasoning" — both are covered directly in lib/backend.test.ts. Mic input
-// is exercised naturally here: jsdom has no SpeechRecognition constructor,
-// so the mic button is disabled without needing to mock lib/voice at all.
+// Isolate App's own state/wiring from the network calls — both are covered
+// directly in lib/backend.test.ts. Mic input is exercised naturally here:
+// jsdom has no SpeechRecognition constructor, so the mic button is disabled
+// without needing to mock lib/voice at all.
 vi.mock("../src/lib/backend", () => ({
-  getStubResponse: vi.fn().mockResolvedValue("Hello from stub"),
+  getAgentResponse: vi.fn().mockResolvedValue("Hello from the agent"),
   speak: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -39,8 +39,8 @@ describe("App", () => {
     expect(screen.getByText("Standing by")).toBeInTheDocument();
   });
 
-  it("sends typed text through the stub backend and displays the reply", async () => {
-    const { getStubResponse, speak } = await import("../src/lib/backend");
+  it("sends typed text through the agent backend and displays the reply", async () => {
+    const { getAgentResponse, speak } = await import("../src/lib/backend");
     await renderSettled();
 
     fireEvent.change(screen.getByRole("textbox"), {
@@ -48,9 +48,9 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByText("Send"));
 
-    await waitFor(() => expect(getStubResponse).toHaveBeenCalledWith("hello jarvis"));
-    await waitFor(() => expect(screen.getByText("Hello from stub")).toBeInTheDocument());
-    expect(speak).toHaveBeenCalledWith("Hello from stub");
+    await waitFor(() => expect(getAgentResponse).toHaveBeenCalledWith("hello jarvis"));
+    await waitFor(() => expect(screen.getByText("Hello from the agent")).toBeInTheDocument());
+    expect(speak).toHaveBeenCalledWith("Hello from the agent");
     await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
   });
 

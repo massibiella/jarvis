@@ -1,8 +1,7 @@
-// The two things the frontend calls out to. Both are placeholders for a
-// real agent backend (PRD §4.12/§6) that doesn't exist yet:
-//   - speak()           -> real network call, to the local Piper TTS server.
-//   - getStubResponse() -> fake, in-browser "reasoning" until an actual
-//                           agent core exists to replace it wholesale.
+// The two things the frontend calls out to:
+//   - speak()           -> POSTs to the local Piper TTS server (voice-server/).
+//   - getAgentResponse() -> POSTs to the Jarvis agent backend (src/jarvis/server.py),
+//                            which runs the real tool-calling loop (Agent.step()).
 
 import { audioEngine } from "./voice";
 
@@ -63,25 +62,21 @@ export async function speak(text: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Stub "reasoning" response: closes the voice/orb loop end-to-end for demos
-// before a real agent backend exists. Not designed to be extended — replace
-// wholesale once that backend is wired in.
+// Agent chat: sends user text to the Jarvis backend's /chat endpoint and
+// returns its reply. The backend owns the actual reasoning/tool-calling loop
+// (see src/jarvis/agent.py) — this is just the HTTP seam.
 // ---------------------------------------------------------------------------
-export async function getStubResponse(userText: string): Promise<string> {
-  await new Promise((resolve) => setTimeout(resolve, 500));
+const CHAT_ENDPOINT = import.meta.env.VITE_AGENT_ENDPOINT ?? "http://localhost:8000/chat";
 
-  const text = userText.toLowerCase();
-  if (!text.trim()) {
-    return "I didn't catch that. Could you say it again?";
+export async function getAgentResponse(userText: string): Promise<string> {
+  const res = await fetch(CHAT_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: userText }),
+  });
+  if (!res.ok) {
+    throw new Error(`Agent server error: ${res.status} ${res.statusText}`);
   }
-  if (text.includes("hello") || text.includes("hi jarvis")) {
-    return "Hello. I'm online, though I'm still just a prototype interface for now.";
-  }
-  if (text.includes("weather")) {
-    return "Weather lookups aren't wired up yet — that's coming once the agent core is connected.";
-  }
-  if (text.includes("who are you") || text.includes("what are you")) {
-    return "I'm Jarvis, a work in progress. Right now I'm only a front-end and voice demo.";
-  }
-  return `You said: "${userText}". I heard you, but I'm not connected to a reasoning engine yet.`;
+  const data = (await res.json()) as { reply: string };
+  return data.reply;
 }

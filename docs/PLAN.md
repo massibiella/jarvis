@@ -123,13 +123,9 @@ Not in scope for Milestone 1 — `self.history` in `agent.py` can grow unbounded
 
   Either way, this is a provider-specific mechanism — a future OpenAI/other adapter without an equivalent feature would need its own strategy (e.g. plain trim-by-count), which is fine: `agent.py` shouldn't have to know or care which approach a given adapter uses, only that history stays within bounds.
 
-## Future step: concurrent requests against one Agent (post–Milestone 1)
+## Resolved: concurrent requests against one Agent
 
-Not a problem today — `cli.py`'s loop is strictly sequential (`input()` blocks until you type, `agent.step()` runs to completion before the next `input()` call), so `self.history` is only ever touched by one in-flight `step()` at a time.
-
-**Why this will matter later:** any future interface that can send a *second* message before the first response comes back (Telegram, a web chat) would mean two overlapping `agent.step()` calls running concurrently against the same `Agent`, both reading/appending to the same shared `self.history` list — a race condition. Worse, a naive "pop the last message on failure" approach (like `cli.py`'s current error handling) breaks under overlap: the last message in `self.history` might belong to the *other* in-flight request, not the one that actually failed.
-
-**Direction to take when this becomes real, not decided now:** serialize access per `Agent`/conversation — e.g. an `asyncio.Lock` so a second incoming message queues behind the first `step()` call instead of running concurrently, rather than trying to make concurrent history mutation itself safe.
+Became real once `server.py` (the HTTP interface the frontend HUD talks to) existed — a browser can fire a second `/chat` request before the first reply comes back, which would otherwise mean two overlapping `agent.step()` calls mutating the same shared `self.history` concurrently. Fixed exactly as anticipated below: `server.py` holds one `asyncio.Lock` around its `agent.step()` call, so a second incoming request queues behind the first instead of interleaving. Single shared `Agent`/history for the whole process, matching today's single-user scope — not one `Agent` per HTTP client.
 
 ## Resolved: Google Calendar tool-schema cost
 

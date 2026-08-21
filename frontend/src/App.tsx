@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "./components/Orb";
 import { MindMap } from "./components/MindMap";
 import { audioEngine, useSpeechRecognition } from "./lib/voice";
-import { speak, getStubResponse } from "./lib/backend";
+import { speak, getAgentResponse } from "./lib/backend";
 import { getGreeting } from "./lib/greeting";
 import { mindMapData, type AssistantState } from "./types";
 
@@ -62,14 +62,14 @@ export default function App() {
     }
   }, [isListening, state]);
 
-  // ---- Core loop: user text -> stub "reasoning" -> Piper TTS -> Orb reacts ----
+  // ---- Core loop: user text -> agent backend -> Piper TTS -> Orb reacts ----
   const respond = useCallback(async (userText: string) => {
     if (!userText.trim() || busyRef.current) return;
     busyRef.current = true;
     setErrorText("");
     try {
       setState("thinking");
-      const reply = await getStubResponse(userText);
+      const reply = await getAgentResponse(userText);
       setResponseText(reply);
       setState("speaking");
       await speak(reply);

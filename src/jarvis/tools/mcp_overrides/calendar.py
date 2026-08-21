@@ -1,20 +1,12 @@
-"""Hand-written schema overrides for specific MCP tools.
+"""Google Calendar's tool-schema overrides.
 
-Some MCP servers hand back JSON schemas far larger than what's actually
-needed — the Google Calendar server's create-event/update-event/list-events
-schemas include Workspace-only and edge-case fields (see docs/PLAN.md) that
-inflate every single agent turn's tool-schema cost. Rather than filtering
-which tools get sent, we override the schema for the specific offenders
-with a hand-picked minimal one.
-
-The override only changes what the LLM sees. The underlying MCP tool call
-still goes through unchanged — the server still accepts (and validates) its
-full original schema, so any field we didn't expose simply keeps its
-server-side default.
-
-Keyed by (server_name, tool_name) rather than tool_name alone, so two
-different MCP servers can't collide by coincidentally naming a tool the
-same thing.
+Its create-event/update-event/list-events schemas hand back far more than
+needed — Workspace-only and edge-case fields that inflate every agent
+turn's tool-schema cost (see docs/PLAN.md's "Resolved: Google Calendar
+tool-schema cost"). Overriding the schema only changes what the LLM sees;
+the underlying MCP tool call still goes through unchanged — the server
+still accepts (and validates) its full original schema, so any field we
+didn't expose simply keeps its server-side default.
 """
 
 from __future__ import annotations
@@ -65,13 +57,13 @@ _EVENT_CORE_PROPERTIES = {
     },
 }
 
-_OVERRIDES: dict[tuple[str, str], dict[str, Any]] = {
-    ("calendar", "create-event"): {
+SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
+    "create-event": {
         "type": "object",
         "properties": _EVENT_CORE_PROPERTIES,
         "required": ["calendarId", "summary", "start", "end"],
     },
-    ("calendar", "update-event"): {
+    "update-event": {
         "type": "object",
         "properties": {
             "eventId": {"type": "string", "description": "ID of the event to update"},
@@ -79,7 +71,7 @@ _OVERRIDES: dict[tuple[str, str], dict[str, Any]] = {
         },
         "required": ["calendarId", "eventId"],
     },
-    ("calendar", "list-events"): {
+    "list-events": {
         "type": "object",
         "properties": {
             "calendarId": {
@@ -103,7 +95,3 @@ _OVERRIDES: dict[tuple[str, str], dict[str, Any]] = {
         "required": ["calendarId"],
     },
 }
-
-
-def get_override(server_name: str, tool_name: str) -> dict[str, Any] | None:
-    return _OVERRIDES.get((server_name, tool_name))

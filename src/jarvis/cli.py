@@ -24,6 +24,7 @@ from jarvis.config import JarvisConfig, load_config
 from jarvis.llm.base import ToolSpec
 from jarvis.llm.registry import get_adapter_class
 from jarvis.memory.store import MemoryStore
+from jarvis.tools.maps_tools import register_maps_tools
 from jarvis.tools.mcp_client import MCPToolClient
 from jarvis.tools.mcp_overrides import get_override
 from jarvis.tools.memory_tools import register_memory_tools
@@ -83,6 +84,7 @@ async def _main() -> None:
     tools = ToolRegistry()
     register_weather_tools(tools)
     register_web_browsing_tools(tools)
+    register_maps_tools(tools)
     clients = []
 
     try:

@@ -1,6 +1,5 @@
 # AD HOC Scripts - Mainly for local testing, throaway code
-test_weather_connection.py
-test_agent_step.py
+sensitive/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

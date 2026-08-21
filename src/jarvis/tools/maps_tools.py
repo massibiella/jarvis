@@ -16,6 +16,7 @@ so a place name has to be geocoded first (Search API), then routed
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from urllib.parse import quote
@@ -74,10 +75,12 @@ def register_maps_tools(tools: ToolRegistry) -> None:
 
         try:
             async with httpx2.AsyncClient(timeout=30.0) as client:
-                origin_coords = await _geocode(client, api_key, origin)
+                origin_coords, destination_coords = await asyncio.gather(
+                    _geocode(client, api_key, origin),
+                    _geocode(client, api_key, destination),
+                )
                 if origin_coords is None:
                     return f"Couldn't find a location matching '{origin}'."
-                destination_coords = await _geocode(client, api_key, destination)
                 if destination_coords is None:
                     return f"Couldn't find a location matching '{destination}'."
 

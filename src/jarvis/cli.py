@@ -56,6 +56,18 @@ def _mcp_tool_to_tool(server_name: str, client: MCPToolClient, tool_spec: ToolSp
     )
 
 
+async def _run_turn(agent: Agent, user_text: str) -> str:
+    """User text in, response text out — the seam a future non-terminal
+    interface (an API, a mobile backend) would call instead of the CLI's
+    input()/print() loop.
+    """
+    try:
+        return await agent.step(user_text)
+    except Exception as e:
+        logger.error("Something went wrong: %s", e)
+        return "Sorry, something went wrong."
+
+
 async def _main() -> None:
     load_dotenv()
     config = load_config()
@@ -98,10 +110,7 @@ async def _main() -> None:
                 break
             if user_input == "/exit":
                 break
-            try:
-                print(await agent.step(user_input))
-            except Exception as e:
-                logger.error("Something went wrong: %s", e)
+            print(await _run_turn(agent, user_input))
     finally:
         # Runs on any exit path — a connect() failure partway through the loop
         # above, a clean `/exit`, EOF, or an unexpected crash — not just the

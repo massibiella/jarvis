@@ -22,6 +22,8 @@ Then add it to `config.yaml`'s `mcp_servers` section — see `config/config.exam
 
 For the calendar server specifically, you also need to authenticate once before first use — run `npx @cocal/google-calendar-mcp auth`, it opens a browser link to sign in and grant access, and caches the resulting token locally. `jarvis` itself won't prompt for this; if calendar tools fail with an auth error, this is the step to (re-)run.
 
+Some MCP servers are remote instead of local — configured with `url` instead of `command` (e.g. IBKR's official hosted connector). No local process needed for these; `jarvis` itself opens a browser for you to authorize on first connect, and caches the resulting token under `~/.jarvis/mcp_oauth/`. Nothing to run manually first, unlike the calendar server above.
+
 ## Development
 
 ```bash

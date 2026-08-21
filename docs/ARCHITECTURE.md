@@ -14,11 +14,13 @@ jarvis (console script)
     → load_dotenv() + load_config()                [src/jarvis/config.py]
     → get_adapter_class(...) + adapter.from_config  [src/jarvis/llm/registry.py, adapters/gemini_adapter.py]
     → register_weather_tools(tools)                 [tools/weather_tools.py] — native, no subprocess
-    → for each config.mcp_servers entry (e.g. Google Calendar):
+    → for each config.mcp_servers entry (Google Calendar, IBKR):
         MCPToolClient(...).connect() + list_tools()  [src/jarvis/tools/mcp_client.py]
-        → each discovered tool wrapped (_mcp_tool_to_tool) — swaps in a
+        → tools not on a server's allowlist skipped (mcp_overrides.is_allowed) —
+          e.g. IBKR's write-capable tools never get registered at all
+        → each remaining tool wrapped (_mcp_tool_to_tool) — swaps in a
           trimmed schema from mcp_overrides.get_override() when one
-          exists for that (server_name, tool_name) [tools/mcp_overrides.py],
+          exists for that (server_name, tool_name) [tools/mcp_overrides/],
           otherwise passes the MCP server's schema through unchanged —
           and registered into a ToolRegistry             [src/jarvis/tools/registry.py]
     → MemoryStore(...) built + register_memory_tools(tools, memory)  [tools/memory_tools.py]
@@ -52,8 +54,11 @@ jarvis/
 │   ├── tools/
 │   │   ├── schema.py                    # build_schema_from_signature(): inspect.signature -> JSON schema
 │   │   ├── registry.py                  # ToolRegistry: register/add_tool/execute/as_llm_tool_specs
-│   │   ├── mcp_client.py                # MCPToolClient: talks to one MCP server over stdio
-│   │   ├── mcp_overrides.py             # hand-written schema overrides for specific bloated MCP tools
+│   │   ├── mcp_client.py                # MCPToolClient: talks to one MCP server, stdio or remote HTTP
+│   │   ├── mcp_oauth.py                 # OAuth (token cache + browser consent) for remote MCP servers
+│   │   ├── mcp_overrides/               # per-server schema overrides + tool allowlists
+│   │   │   ├── calendar.py              # Calendar's trimmed create/update/list-event schemas
+│   │   │   └── ibkr.py                  # IBKR's read-only tool allowlist
 │   │   ├── memory_tools.py              # remember/list_memory/read_memory/search_memory, wrapping MemoryStore
 │   │   └── weather_tools.py             # get_current_weather — native, calls Open-Meteo directly
 │   └── memory/store.py                  # MemoryStore: read/write/append/load_index/search
@@ -62,15 +67,16 @@ jarvis/
 
 ## Components
 
-**Config (`config.py`)** — YAML, resolved from an explicit path, `$JARVIS_CONFIG`, `./config.yaml`, or `~/.jarvis/config.yaml`, in that order. Holds `llm` (provider/model/api key env var), `memory` (root dir, user id), `agent` (system prompt override), `logging`, and `mcp_servers` (name → subprocess launch command, used by `MCPToolClient`). API keys are read lazily from the environment, never stored in the config object itself.
+**Config (`config.py`)** — YAML, resolved from an explicit path, `$JARVIS_CONFIG`, `./config.yaml`, or `~/.jarvis/config.yaml`, in that order. Holds `llm` (provider/model/api key env var), `memory` (root dir, user id), `agent` (system prompt override), `logging`, and `mcp_servers` (name → either a subprocess `command`, or a remote `url` — exactly one of the two, validated in `_parse_mcp_servers()` — used by `MCPToolClient`). API keys are read lazily from the environment, never stored in the config object itself.
 
 **LLM adapters (`llm/`)** — `LLMAdapter` is an ABC with one method, `chat(messages, tools, system, max_tokens) -> LLMResponse`; every provider implements it, translating to/from that provider's own wire format. `llm/registry.py` maps a config string (`"gemini"`) to the adapter class. `GeminiAdapter` is the only complete, working one — both plain-message chat and tool-calling (both directions: offering tools, parsing the model's function-call requests back out) are verified against the real API. `AnthropicAdapter` exists but its `chat()` is unfinished and it's deliberately left out of the registry.
 
 **Tools (`tools/`)** — three pieces, wired together and into `Agent` via `cli.py`:
 - `schema.py`'s `build_schema_from_signature()` turns a Python function's signature into a JSON Schema dict (`str`/`int`/`float`/`bool`, required-if-no-default).
 - `registry.py`'s `ToolRegistry` holds a `dict[str, Tool]` (`Tool` = name/description/parameters/func). `register()` is a decorator for native Python functions (uses `schema.py`); `add_tool()` takes an already-fully-described `Tool` directly (what MCP wiring will use). `execute()` calls a tool's `func` and handles both sync and async callables uniformly (`inspect.isawaitable` check). `as_llm_tool_specs()` converts everything registered into the `ToolSpec` list `LLMAdapter.chat()` expects.
-- `mcp_client.py`'s `MCPToolClient` wraps one MCP server subprocess (stdio transport): `connect()` (spawn + handshake, via `AsyncExitStack` so the connection survives past the method call), `list_tools()` (→ `list[ToolSpec]`), `call_tool()` (→ `str`), `close()`. Optionally passes extra environment variables to the subprocess (e.g. an OAuth credentials path) via `MCPServerConfig.env`. Verified end-to-end originally against `weather-mcp` (since moved off MCP, see below); the Google Calendar integration is the current real user of this path.
-- `mcp_overrides.py`'s `get_override(server_name, tool_name)` returns a hand-written, trimmed JSON schema for a specific MCP tool if one's registered, else `None`. Used by `cli.py`'s `_mcp_tool_to_tool()` to replace only what the LLM sees as a tool's schema — the tool call itself still goes to the real MCP server, validated against its own full original schema. Exists because some MCP servers ship far larger schemas than needed (Google Calendar's `create-event`/`update-event`/`list-events` — see `PLAN.md`'s "Resolved: Google Calendar tool-schema cost").
+- `mcp_client.py`'s `MCPToolClient` wraps one MCP server, over either of two transports: `connect()` spawns a subprocess and speaks stdio (`command` set — Google Calendar's path), or opens a Streamable HTTP connection to `url` with OAuth via `mcp_oauth.build_oauth_provider()` (IBKR's hosted connector). Both feed the same `read, write` streams into one `mcp.ClientSession`, so `list_tools()`/`call_tool()`/`close()` are identical regardless of transport. Google Calendar (stdio) and IBKR (remote) are verified live end-to-end on each path.
+- `mcp_oauth.py` — everything the remote-HTTP branch needs that stdio never did: `_FileTokenStorage` (persists tokens + client registration per server under `~/.jarvis/mcp_oauth/`) and `build_oauth_provider()`, which adds a one-time browser consent flow on top. Only runs that flow when no valid cached token exists; every later `connect()` — including after the access token expires — reuses or silently refreshes the cached one. Also patches four bugs found in the third-party OAuth client itself (missing request header, a metadata mismatch on IBKR's side, scope not narrowing to read-only by default, and refresh not working after a restart) — see `PLAN.md`'s "Resolved: remote MCP transport + IBKR" for details on each.
+- `mcp_overrides/` — per-server registration policy, one file per server (`calendar.py`, `ibkr.py`) plus a thin `__init__.py` dispatcher: `get_override(server_name, tool_name)` returns a hand-written, trimmed JSON schema when one's registered (Calendar's oversized `create-event`/`update-event`/`list-events`), else `None` — the tool call itself still goes to the real MCP server, validated against its own full schema. `is_allowed(server_name, tool_name)` returns `False` only for a tool a server's allowlist explicitly excludes (IBKR's write-capable tools); servers with no allowlist are unaffected. Both used by `cli.py`'s registration loop.
 
 **Agent (`agent.py`)** — owns `self.history: list[ChatMessage]` and runs the tool-calling loop: `step()` sends history + available tools to the adapter, executes any requested tool calls via `ToolRegistry`, feeds results back in, and repeats until the model answers in plain text. Implemented, wired into `cli.py`, and verified end-to-end against the real Gemini API with a real MCP tool call.
 

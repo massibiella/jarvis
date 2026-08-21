@@ -28,9 +28,9 @@ This is a learning project as much as a build. This plan file lives in the repo 
 
 ## MCP integrations (target list, tackle one at a time — user writes the code)
 
-Weather is done, but as a **native tool**, not MCP (see Key Decisions #8 above and `ARCHITECTURE.md`). Two real MCP targets remain:
+Weather is done, but as a **native tool**, not MCP (see Key Decisions #8 above and `ARCHITECTURE.md`). Three real MCP targets:
 
-1. **Google Calendar** — PRD item 1, wired and working. Chose the community server [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp) over Google's own official one — the official server (`calendarmcp.googleapis.com`) uses HTTP transport (which `MCPToolClient` doesn't support, only stdio) and its documented scopes look read-only (view/freebusy, no create/update/delete — the PRD needs full CRUD). The community server supports stdio, full read/write, and local one-time OAuth ("Desktop app" credential type, no hosted redirect URI needed) — matches what's already built with zero new transport code. Setup: Google Cloud Console project → enable Calendar API → OAuth client (Desktop app type, "User data" access) → download `gcp-oauth.keys.json` → add self as a test user under Audience. Wired into `config.yaml`:
+1. **Google Calendar** — PRD item 1, wired and working. Chose the community server [`nspady/google-calendar-mcp`](https://github.com/nspady/google-calendar-mcp) over Google's own official one — at the time, the official server (`calendarmcp.googleapis.com`) used HTTP transport, which `MCPToolClient` didn't support yet (stdio-only then; it gained a remote HTTP+OAuth path for IBKR below — see item 3 — but Calendar's community server was also chosen for its documented read/write scopes, not transport alone, so it stays as-is), and its documented scopes looked read-only (view/freebusy, no create/update/delete — the PRD needs full CRUD). The community server supports stdio, full read/write, and local one-time OAuth ("Desktop app" credential type, no hosted redirect URI needed). Setup: Google Cloud Console project → enable Calendar API → OAuth client (Desktop app type, "User data" access) → download `gcp-oauth.keys.json` → add self as a test user under Audience. Wired into `config.yaml`:
    ```yaml
    mcp_servers:
      calendar:
@@ -40,6 +40,13 @@ Weather is done, but as a **native tool**, not MCP (see Key Decisions #8 above a
    ```
    Needs Node/npm installed (the server is distributed via `npx`, not Python — MCP servers can be any language, `MCPToolClient` is language-agnostic). OAuth working, 6 tools enabled, schemas trimmed for `create-event`/`update-event`/`list-events` (see "Resolved: Google Calendar tool-schema cost" below). `create-event` verified live previously (a real event was created); manual re-verification of create/update/list against the new trimmed schemas specifically is still open.
 2. **Google Maps / traffic (commute time)** — PRD item 15. Same "find an existing server first" approach, not started.
+3. **IBKR (investment portal)** — PRD item, done, verified live against a real account. IBKR's classic APIs (TWS API, Client Portal Web API) need an IBKR Pro account plus a locally-running companion process — ruled out (Lite account). Instead uses IBKR's official hosted MCP connector (`https://api.ibkr.com/v1/api/mcp-public`): remote, Streamable HTTP transport, OAuth 2.1, read-only enforced both by scope and by an allowlist (see "Resolved: remote MCP transport + IBKR" below). First remote MCP server Jarvis talks to, so `MCPToolClient`/`config.py` gained a second transport. Wired into `config.yaml`:
+   ```yaml
+   mcp_servers:
+     ibkr:
+       url: "https://api.ibkr.com/v1/api/mcp-public"
+   ```
+   First `jarvis` run opens a browser to IBKR's consent screen; later runs — including after the access token expires — reuse/refresh the cached token from `~/.jarvis/mcp_oauth/ibkr.json` silently, no browser.
 
 For each: confirm a real MCP server (existing or hand-built) before writing any registry-side code against it — same "verify the real shape, don't guess" approach used throughout this project.
 
@@ -136,6 +143,20 @@ Fixed instead: `src/jarvis/tools/mcp_overrides.py` — hand-written, trimmed JSO
 
 **Still open, general problem for later:** every *new* tool (Maps, IBKR, etc.) still adds fixed per-turn cost regardless of relevance. This fix solved the actual instance that caused real pain, not the general "ship everything every turn" architecture — revisit only if/when a future tool turns out as bloated as Calendar's was.
 
+## Resolved: remote MCP transport + IBKR (verified live)
+
+`MCPToolClient` only spoke stdio until IBKR's official connector needed a second path — remote, not spawned locally. `list_tools()`/`call_tool()`/`close()` didn't change; they only ever touch `self._session`. `connect()` gained a branch: `command` → stdio (unchanged); `url` → `streamable_http_client()` with an OAuth-authenticated `httpx2.AsyncClient`. `MCPServerConfig` requires exactly one of `command`/`url` per server; Calendar's entry is untouched.
+
+`tools/mcp_oauth.py` holds everything stdio never needed: token/client-info persistence (`~/.jarvis/mcp_oauth/<server>.json`), a one-time browser consent flow, and read-only enforcement. IBKR's server always tries to grant both read and write scope by default regardless of what's requested, so the SDK's scope selection is patched to strip write before it's ever requested — confirmed live, a write call returns `"Insufficient scope: mcp.write required"`. `tools/mcp_overrides/ibkr.py`'s allowlist adds a second layer on top: write-capable tools never get registered into Jarvis at all, so the agent doesn't see them as options.
+
+Four real bugs found in the third-party `mcp` SDK's OAuth client along the way (not our own code), each confirmed by tracing live requests against IBKR's real servers, all patched in `mcp_oauth.py`/`mcp_client.py`:
+1. OAuth requests missing `User-Agent` entirely — IBKR's edge blocks them. Fixed with a request hook.
+2. IBKR's own metadata fails the standard issuer-match check — narrow, exact-pair exception, not a general bypass.
+3. Scope selection ignores a client's requested narrower scope, always requesting everything the server advertises.
+4. Silent refresh after a restart: the SDK never tracks a cached token's real expiry, and guesses the wrong token endpoint before real discovery runs.
+
+Live end-to-end: real account, real browser consent, real read-only data, and a real silent refresh confirmed working after simulating an expired token.
+
 ## Remaining files
 
-None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory), the two deferred "Future step" sections above (history management, concurrent requests), and manually re-verifying Calendar's create/update/list-event tools against the new trimmed schemas (code done, live re-test not yet run).
+None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory), the two deferred "Future step" sections above (history management, concurrent requests), and manually re-verifying Calendar's create/update/list-event tools against the new trimmed schemas (code done, live re-test not yet run — separate from IBKR's, which is verified).

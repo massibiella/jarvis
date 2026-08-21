@@ -6,7 +6,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [x] Local weather — native tool (`tools/weather_tools.py`, Open-Meteo, no key). Originally an MCP server (`weather-mcp`), moved to native once Google Calendar became the real MCP use case — see `PLAN.md`. Verified live: `jarvis` answers real weather questions end to end.
 - [x] Google Calendar (view/create/delete/update/remind/reorganize) — OAuth done, MCP server (`@cocal/google-calendar-mcp`) connected with 6 tools enabled, schemas trimmed for cost (`tools/mcp_overrides.py`, see `PLAN.md`). Verified live.
 - [ ] Apple Calendar — not started
-- [ ] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
+- [x] Commute time (Google Maps / traffic) — MCP-based, needs Google OAuth
 - [ ] Investment portal via IBKR
 - [ ] Newsletter updates (investments + interest categories)
 - [x] Memory files (persistent, cross-session) — `MemoryStore` fully implemented (read/write/append/load_index/search) and wired into `Agent`/`cli.py`. Agent has `remember`/`list_memory`/`read_memory`/`search_memory` tools and decides on its own when something's worth remembering, restricted to two categories (facts, preferences) — see `PLAN.md` for why. Verified live end-to-end.

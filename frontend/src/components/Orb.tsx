@@ -83,8 +83,19 @@ export function Orb({ state }: OrbProps) {
         let offset: number;
 
         if (freq) {
-          const bin = freq[Math.floor((i / POINTS) * freq.length)] / 255;
-          offset = bin * baseRadius * 0.9;
+          // Average a small window of neighboring bins (skipping the very
+          // lowest, which carry bass/DC energy far larger than the rest and
+          // otherwise drag the ring into a single lopsided bulge) so the
+          // ring reads as a smooth reactive wobble instead of jagged noise.
+          const center = Math.floor((i / POINTS) * freq.length);
+          const window = 3;
+          let sum = 0;
+          for (let k = -window; k <= window; k++) {
+            const idx = Math.max(4, (center + k + freq.length) % freq.length);
+            sum += freq[idx];
+          }
+          const bin = sum / (window * 2 + 1) / 255;
+          offset = bin * baseRadius * 0.5;
         } else if (s === "thinking") {
           offset = (Math.sin(angle * 4 + t * 3) * 0.5 + 0.5) * baseRadius * 0.35;
         } else {

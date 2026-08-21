@@ -111,6 +111,9 @@ interface SpeechRecognitionEventLike extends Event {
   resultIndex: number;
   results: ArrayLike<SpeechRecognitionResultLike>;
 }
+interface SpeechRecognitionErrorEventLike extends Event {
+  error: string;
+}
 interface SpeechRecognitionLike extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
@@ -118,9 +121,12 @@ interface SpeechRecognitionLike extends EventTarget {
   start(): void;
   stop(): void;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: Event) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
 }
+
+// Errors where the mic session is unrecoverable and shouldn't be auto-restarted.
+const FATAL_SPEECH_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
@@ -139,6 +145,9 @@ export function useSpeechRecognition() {
   const [interimTranscript, setInterimTranscript] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onFinalRef = useRef<((text: string) => void) | null>(null);
+  // Whether the user still wants the mic on — distinct from isListening,
+  // which tracks the browser engine's own (unreliable) run state.
+  const shouldListenRef = useRef(false);
 
   useEffect(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -163,11 +172,33 @@ export function useSpeechRecognition() {
       setInterimTranscript(interimChunk);
     };
 
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event) => {
+      if (FATAL_SPEECH_ERRORS.has(event.error)) {
+        shouldListenRef.current = false;
+        setIsListening(false);
+      }
+      // Transient errors (no-speech, network, aborted) are followed by
+      // onend, which restarts the session below if still wanted.
+    };
+
+    // Chrome/Edge auto-stop "continuous" recognition on its own (silence
+    // timeout, transient errors) — restart transparently rather than
+    // treating every onend as the user having stopped.
+    recognition.onend = () => {
+      if (shouldListenRef.current) {
+        try {
+          recognition.start();
+          return;
+        } catch {
+          // Engine refused to restart (e.g. rapid stop/start) — fall through.
+        }
+      }
+      setIsListening(false);
+    };
 
     recognitionRef.current = recognition;
     return () => {
+      shouldListenRef.current = false;
       recognition.stop();
       recognitionRef.current = null;
     };
@@ -178,11 +209,13 @@ export function useSpeechRecognition() {
     onFinalRef.current = onFinal ?? null;
     setTranscript("");
     setInterimTranscript("");
+    shouldListenRef.current = true;
     recognitionRef.current.start();
     setIsListening(true);
   }, []);
 
   const stop = useCallback(() => {
+    shouldListenRef.current = false;
     recognitionRef.current?.stop();
     setIsListening(false);
   }, []);

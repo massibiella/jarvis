@@ -153,6 +153,25 @@ Four real bugs found in the third-party `mcp` SDK's OAuth client along the way (
 
 Live end-to-end: real account, real browser consent, real read-only data, and a real silent refresh confirmed working after simulating an expired token.
 
+## Future step: packaging & distribution (native app, not Docker)
+
+Not in scope now — a few in-progress features land first; revisit once those are done. Notes captured here so the decisions from discussion aren't lost in the meantime.
+
+**Context:** Jarvis needs to run as a normal double-click app on the user's own Mac/Windows machine (not a dedicated always-on server), started manually for a first pass — no OS autostart-at-login or tray icon yet, those are separate later steps. PRD §5.2/§6 want an eventual always-on background service with a scheduler; packaging is the prerequisite, not the scheduler itself.
+
+**Decision: native packaging, not Docker.** Docker is built for headless servers — it needs Docker Desktop running as an extra dependency, doesn't give tray icons/autostart/mic access, and this runs on the user's own laptop/desktop, not a dedicated box. Its main appeal (filesystem isolation via volumes) isn't worth the tradeoff here — Jarvis already has no shell/file-write tool, and that constraint holds going forward regardless of packaging choice (see "Filesystem/system safety" below).
+
+**Work items, when this gets picked up:**
+1. **Bundle the Python backend into a standalone binary** — PyInstaller or Nuitka, so the machine running Jarvis doesn't need Python installed. Evaluate both: PyInstaller is the more battle-tested default; Nuitka compiles to a real binary (smaller/faster) but is trickier with dynamic imports. Decide once we're actually here, not now.
+2. **Build the frontend to static files** (`npm run build` in `frontend/`) and **serve them from `jarvis-server`** instead of relying on the Vite dev server — `create_app()` (`src/jarvis/server.py`) currently only exposes `/health` and `/chat`, no static-file mount. One process, one thing to launch, instead of two terminals.
+3. **Wrap into an OS installer** — `.dmg`/`.pkg` on Mac, NSIS/Inno Setup `.exe` on Windows — placing the app in the normal `/Applications` / `Program Files` location.
+4. **Node/npm dependency risk:** the Google Calendar MCP server is launched via `npx @cocal/google-calendar-mcp` (`config.yaml`'s `mcp_servers.calendar.command`) — PyInstaller/Nuitka only bundle the Python side, so a packaged Jarvis would still require Node.js installed separately for Calendar to work, undermining the "no manual setup" goal. Needs a decision when we get here: bundle a Node runtime too, find/build a pure-Python or HTTP-based calendar path, or accept Node as a documented prerequisite.
+5. **voice-server folding-in:** `voice-server/` is an explicitly temporary standalone Flask prototype (per its own README) — decide whether it gets absorbed into the main agent process before or as part of packaging, since a packaged app shouldn't require a third manually-started service.
+6. **Code signing:** Gatekeeper (Mac) and SmartScreen (Windows) both flag/block unsigned apps by default — needs an Apple Developer cert + notarization, and a Windows code-signing cert, or the app will look broken/untrusted on first launch.
+7. Explicitly deferred out of this first pass (per discussion): tray icon, autostart-at-login, and any native window shell (Tauri/Electron) — HUD stays browser-based for now.
+
+**Filesystem/system safety (holds regardless of packaging approach):** no shell/exec or unscoped file-write tool on the agent; any future tool that touches disk stays scoped to Jarvis's own `data/` directory; the packaged app runs as a standard user, no elevated/admin permissions; uninstall means deleting the app, no registry edits or scattered files.
+
 ## Remaining files
 
-None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory), the two deferred "Future step" sections above (history management, concurrent requests), and manually re-verifying Calendar's create/update/list-event tools against the new trimmed schemas (code done, live re-test not yet run — separate from IBKR's, which is verified).
+None — Milestone 1's core implementation is complete. What's left is Step 8/9 (polish, automated tests for memory), the two deferred "Future step" sections above (history management, concurrent requests), the packaging/distribution future step above, and manually re-verifying Calendar's create/update/list-event tools against the new trimmed schemas (code done, live re-test not yet run — separate from IBKR's, which is verified).

@@ -17,6 +17,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [ ] Daily night check-in (what was done today, what's deferred)
 - [ ] Own reminders (independent of the user's calendar)
 - [x] Web browsing / research
+- [ ] Packaging/distribution (native app for Mac/Windows, not Docker) — not started, deferred until current in-progress features land. See PLAN.md "Future step: packaging & distribution" for the plan (PyInstaller/Nuitka bundling, static frontend served from `jarvis-server`, OS installer, Node/npm dependency risk from the Calendar MCP server, code signing). Tray icon/autostart/native shell explicitly out of scope for the first pass.
 
 ## Nice to have
 - [ ] Mobile connection (e.g. message the user via Telegram)

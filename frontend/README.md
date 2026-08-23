@@ -65,7 +65,10 @@ frontend/
 │   │                              from each other or from App.tsx
 │   ├── components/                presentational canvas views
 │   │   ├── Orb.tsx                  audio-reactive circular waveform —
-│   │   │                            visualizes AssistantState
+│   │   │                            visualizes AssistantState (Jarvis only,
+│   │   │                            not the user's mic — see MicLevelBar)
+│   │   ├── MicLevelBar.tsx           header meter for the USER's mic input,
+│   │   │                            kept separate from the Orb
 │   │   └── MindMap.tsx               radial tree — visualizes the
 │   │                                 (placeholder) memory graph
 │   └── lib/                       non-visual logic / external calls
@@ -86,6 +89,7 @@ frontend/
     ├── App.test.tsx               tests src/App.tsx
     ├── components/
     │   ├── Orb.test.tsx             tests src/components/Orb.tsx
+    │   ├── MicLevelBar.test.tsx      tests src/components/MicLevelBar.tsx
     │   └── MindMap.test.tsx          tests src/components/MindMap.tsx
     └── lib/
         ├── voice.test.ts             tests src/lib/voice.ts
@@ -132,8 +136,11 @@ than owning its own:
 2. State → `thinking`, text goes to `getAgentResponse()` (`lib/backend.ts`),
    which POSTs to the Jarvis agent backend's `/chat` endpoint
    (`../src/jarvis/server.py`) — the real tool-calling loop, not a stub.
-3. Reply comes back, state → `speaking`, reply goes to `speak()`, which
-   POSTs to the voice-server and plays the returned WAV.
+3. Reply comes back, state → `speaking`, reply goes to `speak()`, which runs
+   it through `sanitizeForSpeech()` (`lib/backend.ts` — strips markdown/
+   symbols, expands `°`/`°C`/`°F`, keeps sentence-ending punctuation so the
+   voice server can pace multi-sentence replies) and POSTs the result to the
+   voice-server, then plays the returned WAV.
 4. `Orb` reads `AssistantState` as a prop and re-renders its `<canvas>`
    accordingly — see below.
 5. State → `idle` once playback ends (or the request fails, or speech
@@ -144,35 +151,62 @@ than owning its own:
 `Orb.tsx` doesn't get audio data through React props or state — that would
 re-render the component every animation frame. Instead, `lib/voice.ts`
 exports a singleton `audioEngine` wrapping one shared `AudioContext` +
-`AnalyserNode`. Both the mic (during `listening`) and the TTS `<audio>`
-element (during `speaking`) connect to that same analyser. The Orb's own
-`requestAnimationFrame` loop reads `audioEngine.getFrequencyData()` /
-`getLevel()` directly on every frame — no state hookup, no extra re-renders.
+`AnalyserNode`. The Orb's own `requestAnimationFrame` loop reads
+`audioEngine.getFrequencyData()` / `getLevel()` directly on every frame — no
+state hookup, no extra re-renders. Only `speaking` is audio-reactive — the
+mic (`listening`) intentionally isn't wired into the Orb at all; the Orb
+visualizes Jarvis, not the person talking to it. The user's mic level gets
+its own indicator instead — see `components/MicLevelBar.tsx`, driven by the
+same `audioEngine`.
 
-For `idle` and `thinking`, there's no real audio source, so the waveform
-motion is synthetic (a calm sine-wave breathing effect vs. a faster rotating
-sweep) rather than driven by the analyser.
+For `idle`, `listening`, and `thinking`, there's no real audio source, so the
+waveform motion is synthetic (a calm sine-wave breathing effect vs. a faster
+rotating sweep) rather than driven by the analyser.
 
-A new `AudioContext` starts life `"suspended"` until a user gesture unlocks
-it, and resuming it is asynchronous. `speak()` (`lib/backend.ts`) awaits
-`audioEngine.resume()` before calling `audioEl.play()` — skipping that await
-(e.g. calling `play()` right after `connectElement()`) lets playback start
-routing samples through the graph while the context is still suspended,
-which silently drops the first fraction of a second of audio. This is why
-the launch greeting used to clip the "Good" off "Good evening, Sir." — see
-`AudioEngine.resume()` in `lib/voice.ts`.
+TTS playback (`speak()` in `lib/backend.ts`) hands the fetched WAV bytes to
+`audioEngine.playBuffer()`, which decodes them via `AudioContext.decodeAudioData()`
+into an in-memory `AudioBuffer` and plays them with an `AudioBufferSourceNode`
+connected to the same analyser + `ctx.destination`. This is deliberately
+*not* an `<audio>` element piped through `createMediaElementSource()`: that
+combination has a long-documented Chromium bug where the first render
+quantum(s) of a *new* source are silently dropped, independent of whether
+the element has already fired `"canplay"` — for a short reply, the dropped
+chunk can be the entire audible clip (this is what used to clip "Good" off
+the launch greeting, and later clipped leading words/digits off ordinary
+replies too, even well after the `AudioContext` had been running for a
+while). `AudioBufferSourceNode` avoids that specific bug: the buffer is
+fully decoded in memory before `start()` is ever called, so there's no
+decoder to race.
+
+That alone wasn't the whole story, though — replies kept clipping their
+first word/character even with `AudioBufferSourceNode` in place. Probing
+the voice server directly (fetching a WAV and checking its PCM envelope)
+showed the audio data itself has full content from ~20ms in — nothing is
+missing at the source. The remaining loss is downstream, at the OS/browser
+audio output level: there's often a long silent gap between replies
+(listening + thinking), and waking the output stream back up from idle to
+start a new utterance drops its first ~100-300ms, independent of which
+WebAudio node feeds it. `AudioEngine`'s constructor works around this by
+starting a continuous, effectively inaudible oscillator (`startKeepAlive()`
+in `lib/voice.ts`, gain `0.00001`, wired straight to `ctx.destination` — not
+through the analyser, so it never skews the Orb's readings) the moment the
+`AudioContext` is created, so the output stream is never idle by the time a
+real reply needs to play. `playBuffer()` also awaits `AudioContext.resume()`
+first (a fresh context starts `"suspended"` until a user gesture unlocks
+it).
 
 ## Known quirks / tradeoffs
 
 - **The launch greeting can still be blocked entirely by browser autoplay
-  policy**, separately from the resume-race above. `speak()` plays audio
-  with no prior user interaction, and Chromium-based browsers may silently
-  reject `<audio>.play()` on a page the user hasn't interacted with yet
-  (autoplay restrictions loosen after the site builds up enough Media
-  Engagement, e.g. from repeated visits during development). If the greeting
-  doesn't play at all, that's why — it's a browser policy, not a bug in
-  `speak()`/`greeting.ts`, and it self-resolves after the first
-  click/keypress on the page in that browser session.
+  policy**, separately from the decode/resume handling above. `speak()`
+  plays audio with no prior user interaction, and Chromium-based browsers
+  may silently refuse to produce audible output from an `AudioContext` on a
+  page the user hasn't interacted with yet (autoplay restrictions loosen
+  after the site builds up enough Media Engagement, e.g. from repeated
+  visits during development). If the greeting doesn't play at all, that's
+  why — it's a browser policy, not a bug in `speak()`/`greeting.ts`, and it
+  self-resolves after the first click/keypress on the page in that browser
+  session.
 - **Speech-to-text is browser-native** (`SpeechRecognition` /
   `webkitSpeechRecognition`), not local/open-source. It's the fastest path
   to a working demo, but it's the first thing to swap for local Whisper if

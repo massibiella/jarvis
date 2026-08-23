@@ -42,7 +42,12 @@ switch voices, download a different model and update `MODEL_PATH` in
 Serves on `http://localhost:8765`:
 
 - `GET /health` — sanity check
-- `POST /speak` — body `{ "text": "..." }`, returns a `audio/wav` response
+- `POST /speak` — body `{ "text": "..." }`, returns a `audio/wav` response.
+  Piper's `voice.synthesize()` yields one audio chunk per sentence (it
+  splits on `.`/`!`/`?` internally); `server.py` inserts `SENTENCE_PAUSE_SECONDS`
+  of silence between consecutive chunks instead of concatenating them
+  back-to-back, so a multi-sentence reply reads as separate thoughts rather
+  than one continuous breath.
 
 The frontend's `VITE_TTS_ENDPOINT` (see `frontend/.env.example`) points at
 `/speak` by default.

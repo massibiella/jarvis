@@ -12,59 +12,59 @@ import { audioEngine } from "./voice";
 // ---------------------------------------------------------------------------
 const TTS_ENDPOINT = import.meta.env.VITE_TTS_ENDPOINT ?? "http://localhost:8765/speak";
 
-let sharedAudioEl: HTMLAudioElement | null = null;
+// LLM replies routinely carry markdown (**bold**, # headers, (asides),
+// bullet dashes, `code`) that Piper would otherwise read aloud literally
+// (e.g. saying "asterisk asterisk" instead of just the word). Strip every
+// character down to words, numbers, whitespace, and sentence-ending
+// punctuation, with two exceptions:
+//   - a "-" immediately before a digit is a negative sign, not a symbol, so
+//     it's swapped for an ASCII token that survives the symbol sweep below,
+//     then restored afterward -- otherwise "-5" would silently become "5",
+//     flipping its meaning.
+//   - "." / "!" / "?" are kept as sentence terminators (not stripped like
+//     other punctuation) so the voice server can still tell where one
+//     sentence ends and the next begins, and insert a pause there -- see
+//     voice-server/server.py. This also means a decimal point like "26.7"
+//     survives intact instead of splitting into "26 7".
+const NEG_TOKEN = "NEGSIGN";
 
-function getAudioElement(): HTMLAudioElement {
-  if (!sharedAudioEl) {
-    sharedAudioEl = new Audio();
-    sharedAudioEl.crossOrigin = "anonymous";
-    audioEngine.connectElement(sharedAudioEl);
-  }
-  return sharedAudioEl;
+export function sanitizeForSpeech(text: string): string {
+  return text
+    .split(/-(?=\d)/).join(NEG_TOKEN)
+    // "°" alone isn't spoken as anything -- and "°C"/"°F" specifically
+    // should read as the actual unit name, not the bare letter.
+    .replace(/°\s*([CF])\b/gi, (_match, letter: string) =>
+      letter.toUpperCase() === "C" ? " degrees Celsius " : " degrees Fahrenheit "
+    )
+    .split("°").join(" degrees ")
+    .replace(/[^A-Za-z0-9\s.!?]/g, " ")
+    .split(NEG_TOKEN).join("-")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.!?])/g, "$1")
+    .trim();
 }
 
 export async function speak(text: string): Promise<void> {
   const res = await fetch(TTS_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text: sanitizeForSpeech(text) }),
   });
   if (!res.ok) {
     throw new Error(`TTS server error: ${res.status} ${res.statusText}`);
   }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const audioEl = getAudioElement();
-  // Make sure the shared AudioContext is actually running before playback
-  // starts — see AudioEngine.resume() for why skipping this clips the start
-  // of the audio.
-  await audioEngine.resume();
-
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      audioEl.removeEventListener("ended", onEnded);
-      audioEl.removeEventListener("error", onError);
-      URL.revokeObjectURL(url);
-    };
-    const onEnded = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error("Audio playback failed"));
-    };
-    audioEl.addEventListener("ended", onEnded);
-    audioEl.addEventListener("error", onError);
-    audioEl.src = url;
-    audioEl.play().catch(onError);
-  });
+  const data = await res.arrayBuffer();
+  // playBuffer() (lib/voice.ts) decodes and plays this through the shared
+  // WebAudio graph via AudioBufferSourceNode -- not an <audio> element, which
+  // has a long-documented Chromium bug that silently drops the first render
+  // quantum(s) of a new source, clipping the start of short replies.
+  await audioEngine.playBuffer(data);
 }
 
 // ---------------------------------------------------------------------------
 // Agent chat: sends user text to the Jarvis backend's /chat endpoint and
 // returns its reply. The backend owns the actual reasoning/tool-calling loop
-// (see src/jarvis/agent.py) — this is just the HTTP seam.
+// (see src/jarvis/agent.py) -- this is just the HTTP seam.
 // ---------------------------------------------------------------------------
 const CHAT_ENDPOINT = import.meta.env.VITE_AGENT_ENDPOINT ?? "http://localhost:8000/chat";
 

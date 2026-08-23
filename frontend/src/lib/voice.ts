@@ -14,8 +14,8 @@ class AudioEngine {
   private analyser: AnalyserNode | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private micStream: MediaStream | null = null;
-  private elementSource: MediaElementAudioSourceNode | null = null;
   private freqData: Uint8Array<ArrayBuffer> | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
 
   private ensureContext(): { ctx: AudioContext; analyser: AnalyserNode } {
     if (!this.ctx) {
@@ -24,11 +24,77 @@ class AudioEngine {
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.75;
       this.freqData = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
+      this.startKeepAlive(this.ctx);
     }
     if (this.ctx.state === "suspended") {
       void this.ctx.resume();
     }
     return { ctx: this.ctx, analyser: this.analyser! };
+  }
+
+  /**
+   * Keeps the OS/browser audio output stream continuously active with an
+   * inaudible tone for the page's lifetime, connected straight to
+   * destination (not through the analyser, so it never skews
+   * getLevel()/getFrequencyData()).
+   *
+   * Why: there's often a long silent gap between replies (listening +
+   * thinking), and when the output device has been idle, waking it back up
+   * to start a new utterance silently drops the first ~100-300ms of audio —
+   * this was clipping the first word/character off replies even after
+   * switching TTS playback to AudioBufferSourceNode with a fully
+   * pre-decoded buffer (verified directly: the WAV Piper returns already
+   * has full audio content from ~20ms in, so the loss isn't in the audio
+   * data itself or in decoding — it's downstream, at the output
+   * device/driver level going from idle to active). A continuously-active
+   * signal, even inaudible, keeps that stream warm so it's never idle when
+   * a real reply needs to play.
+   */
+  private startKeepAlive(ctx: AudioContext): void {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.00001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+  }
+
+  private autoResumeArmed = false;
+
+  /**
+   * Arms a one-time listener that creates + resumes the AudioContext (and
+   * so starts the keep-alive tone above) on the user's very first
+   * interaction with the page, instead of waiting for the specific action
+   * that needs real audio.
+   *
+   * Why this matters: for a typed (no mic) conversation, nothing ever
+   * touches the AudioContext until speak() calls playBuffer() for the
+   * first reply -- so the keep-alive tone starts and the real TTS audio
+   * needs to play in the same breath, giving it zero time to actually warm
+   * up the output stream (see startKeepAlive() -- a suspended context's
+   * oscillator isn't flowing any samples yet either, so merely
+   * constructing it earlier doesn't help; it has to actually be resumed).
+   * Calling this once on app mount means the very first click/keypress
+   * anywhere on the page -- typically several seconds before any reply is
+   * ready, given the listening/thinking round trip -- is what resumes the
+   * context, so the keep-alive tone has real lead time before it matters.
+   */
+  armAutoResume(): () => void {
+    if (this.autoResumeArmed) return () => {};
+    this.autoResumeArmed = true;
+
+    const cleanup = () => {
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+    };
+    const onFirstInteraction = () => {
+      void this.resume();
+      cleanup();
+    };
+
+    window.addEventListener("pointerdown", onFirstInteraction);
+    window.addEventListener("keydown", onFirstInteraction);
+    return cleanup;
   }
 
   async connectMic(): Promise<void> {
@@ -62,14 +128,48 @@ class AudioEngine {
     }
   }
 
-  connectElement(el: HTMLAudioElement): void {
+  /**
+   * Decodes raw audio bytes (a Piper WAV response) and plays them through
+   * the shared analyser graph, resolving once playback ends.
+   *
+   * Deliberately NOT an <audio> element piped through
+   * createMediaElementSource(): that combination has a long-documented
+   * Chromium bug where the first render quantum(s) of a *new* source are
+   * silently dropped, independent of whether the element has already fired
+   * "canplay" — for a short reply, that dropped chunk can be the entire
+   * audible clip. decodeAudioData() fully decodes the WAV into memory
+   * first, so start() below has nothing left to race: the whole buffer is
+   * already sample data before playback begins.
+   */
+  async playBuffer(data: ArrayBuffer): Promise<void> {
     const { ctx, analyser } = this.ensureContext();
-    if (this.elementSource) {
-      this.elementSource.disconnect();
+    await this.resume();
+
+    let audioBuffer: AudioBuffer;
+    try {
+      audioBuffer = await ctx.decodeAudioData(data);
+    } catch {
+      throw new Error("Audio playback failed");
     }
-    this.elementSource = ctx.createMediaElementSource(el);
-    this.elementSource.connect(analyser);
-    this.elementSource.connect(ctx.destination);
+
+    // Guards against overlapping playback if a caller somehow starts a
+    // second reply before the first finishes (App.tsx normally serializes
+    // this via busyRef, but this keeps the audio graph consistent either way).
+    this.currentSource?.stop();
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    source.connect(ctx.destination);
+    this.currentSource = source;
+
+    return new Promise((resolve) => {
+      source.onended = () => {
+        if (this.currentSource === source) this.currentSource = null;
+        resolve();
+      };
+      source.start();
+    });
   }
 
   /** Snapshot of frequency-bin amplitudes (0-255), or null if no audio graph exists yet. */

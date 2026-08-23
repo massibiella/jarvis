@@ -16,6 +16,41 @@ class FakeAnalyserNode {
   }
 }
 
+class FakeBufferSourceNode extends EventTarget {
+  static instances: FakeBufferSourceNode[] = [];
+  buffer: unknown = null;
+  connect = vi.fn();
+  onended: (() => void) | null = null;
+  // Mimics real playback finishing asynchronously, after start() is called.
+  start = vi.fn(() => {
+    queueMicrotask(() => this.onended?.());
+  });
+  stop = vi.fn(() => this.onended?.());
+
+  constructor() {
+    super();
+    FakeBufferSourceNode.instances.push(this);
+  }
+}
+
+class FakeGainNode {
+  static instances: FakeGainNode[] = [];
+  gain = { value: 1 };
+  connect = vi.fn();
+  constructor() {
+    FakeGainNode.instances.push(this);
+  }
+}
+
+class FakeOscillatorNode {
+  static instances: FakeOscillatorNode[] = [];
+  connect = vi.fn();
+  start = vi.fn();
+  constructor() {
+    FakeOscillatorNode.instances.push(this);
+  }
+}
+
 class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
   state = "running";
@@ -26,9 +61,16 @@ class FakeAudioContext {
   createMediaStreamSource() {
     return { connect: vi.fn(), disconnect: vi.fn() };
   }
-  createMediaElementSource() {
-    return { connect: vi.fn() };
+  createBufferSource() {
+    return new FakeBufferSourceNode();
   }
+  createGain() {
+    return new FakeGainNode();
+  }
+  createOscillator() {
+    return new FakeOscillatorNode();
+  }
+  decodeAudioData = vi.fn(async () => ({ duration: 1 }) as unknown as AudioBuffer);
   resume = vi.fn();
   constructor() {
     FakeAudioContext.instances.push(this);
@@ -73,6 +115,33 @@ describe("audioEngine", () => {
     delete (navigator as unknown as { mediaDevices?: unknown }).mediaDevices;
     FakeAudioContext.instances = [];
     SuspendedFakeAudioContext.instances = [];
+    FakeBufferSourceNode.instances = [];
+    FakeGainNode.instances = [];
+    FakeOscillatorNode.instances = [];
+  });
+
+  it("keeps the output stream warm with a near-silent tone as soon as the context is created", async () => {
+    const { audioEngine } = await freshVoiceModule();
+    await audioEngine.connectMic();
+
+    const ctx = FakeAudioContext.instances.at(-1)!;
+    const osc = FakeOscillatorNode.instances.at(-1)!;
+    const gain = FakeGainNode.instances.at(-1)!;
+    expect(osc.connect).toHaveBeenCalledWith(gain);
+    expect(gain.connect).toHaveBeenCalledWith(ctx.destination);
+    expect(osc.start).toHaveBeenCalledOnce();
+    // Inaudible, but non-zero so the stream can't be optimized away as silent.
+    expect(gain.gain.value).toBeGreaterThan(0);
+    expect(gain.gain.value).toBeLessThan(0.001);
+  });
+
+  it("only starts one keep-alive tone no matter how many times the context is touched", async () => {
+    const { audioEngine } = await freshVoiceModule();
+    await audioEngine.connectMic();
+    await audioEngine.resume();
+    await audioEngine.playBuffer(new ArrayBuffer(8));
+
+    expect(FakeOscillatorNode.instances).toHaveLength(1);
   });
 
   it("has no signal until a mic or playback element is connected", async () => {
@@ -114,6 +183,44 @@ describe("audioEngine", () => {
 
     const ctx = FakeAudioContext.instances.at(-1)!;
     expect(ctx.resume).not.toHaveBeenCalled();
+  });
+
+  describe("playBuffer", () => {
+    it("decodes the data and plays it through the analyser and destination, resolving when it ends", async () => {
+      const { audioEngine } = await freshVoiceModule();
+
+      await audioEngine.playBuffer(new ArrayBuffer(8));
+
+      const ctx = FakeAudioContext.instances.at(-1)!;
+      const source = FakeBufferSourceNode.instances.at(-1)!;
+      expect(ctx.decodeAudioData).toHaveBeenCalledOnce();
+      expect(source.buffer).toEqual({ duration: 1 });
+      expect(source.connect).toHaveBeenCalledWith(expect.any(FakeAnalyserNode));
+      expect(source.connect).toHaveBeenCalledWith(ctx.destination);
+      expect(source.start).toHaveBeenCalledOnce();
+    });
+
+    it("waits for a suspended AudioContext to resume before starting playback", async () => {
+      vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+
+      await audioEngine.playBuffer(new ArrayBuffer(8));
+
+      const ctx = SuspendedFakeAudioContext.instances.at(-1)!;
+      expect(ctx.resume).toHaveBeenCalledOnce();
+      const source = FakeBufferSourceNode.instances.at(-1)!;
+      expect(source.start).toHaveBeenCalledOnce();
+    });
+
+    it("rejects when the audio data fails to decode", async () => {
+      class FailingDecodeAudioContext extends FakeAudioContext {
+        decodeAudioData = vi.fn().mockRejectedValue(new Error("bad wav"));
+      }
+      vi.stubGlobal("AudioContext", FailingDecodeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+
+      await expect(audioEngine.playBuffer(new ArrayBuffer(8))).rejects.toThrow(/playback failed/i);
+    });
   });
 });
 

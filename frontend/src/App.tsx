@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "./components/Orb";
+import { MicLevelBar } from "./components/MicLevelBar";
 import { MindMap } from "./components/MindMap";
 import { audioEngine, useSpeechRecognition } from "./lib/voice";
 import { speak, getAgentResponse } from "./lib/backend";
@@ -30,6 +31,13 @@ export default function App() {
 
   const { isSupported, isListening, transcript, interimTranscript, start, stop } =
     useSpeechRecognition();
+
+  // Arm the AudioContext to resume on the user's very first click/keypress
+  // anywhere on the page, rather than waiting for the specific action that
+  // needs real audio (e.g. the Send button) -- see armAutoResume() in
+  // lib/voice.ts for why that lead time matters for not clipping the start
+  // of the first reply.
+  useEffect(() => audioEngine.armAutoResume(), []);
 
   // Speak a time-of-day greeting once on launch, before any user input.
   // Guarded by a ref (not just the empty dep array) because StrictMode
@@ -132,6 +140,8 @@ export default function App() {
           {view === "assistant" ? STATE_LABEL[state] : "Neural Map"}
         </span>
       </header>
+
+      {view === "assistant" && <MicLevelBar active={state === "listening"} />}
 
       {view === "assistant" ? (
         <>

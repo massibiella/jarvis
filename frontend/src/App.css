@@ -61,6 +61,44 @@ body {
   letter-spacing: 0.2em;
 }
 
+/* ---- Mic level bar (see components/MicLevelBar.tsx): shows the USER's ---
+   ---- mic input, kept separate from the orb which visualizes Jarvis ---- */
+
+.mic-level-row {
+  height: 0.3rem;
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.mic-level-row.active {
+  opacity: 1;
+}
+
+.mic-level-track {
+  position: relative;
+  width: min(50vw, 480px);
+  height: 100%;
+  background: rgba(255, 77, 77, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mic-level-fill {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+  width: 0%;
+  background: var(--red);
+  box-shadow: 0 0 12px rgba(255, 77, 77, 0.8);
+  border-radius: 999px;
+  transform: translateX(-50%);
+  transition: width 60ms linear;
+}
+
 .hud-main {
   flex: 1;
   display: flex;

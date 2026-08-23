@@ -13,20 +13,22 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def _fake_synthesize_wav(_text, wav_file):
-    """Stands in for Piper's real inference: writes a tiny valid WAV."""
-    wav_file.setnchannels(1)
-    wav_file.setsampwidth(2)
-    wav_file.setframerate(16000)
-    wav_file.writeframes(b"\x00\x00" * 100)
+class FakeAudioChunk:
+    """Stands in for piper.voice.AudioChunk -- one per sentence."""
+
+    def __init__(self, num_samples=100, sample_rate=16000, sample_width=2, sample_channels=1):
+        self.sample_rate = sample_rate
+        self.sample_width = sample_width
+        self.sample_channels = sample_channels
+        self.audio_int16_bytes = b"\x00\x00" * num_samples
 
 
-@pytest.fixture
-def client():
-    """Import server.py fresh with `piper` mocked and the model path faked present."""
+def _import_server(chunks):
+    """Imports server.py fresh with `piper` mocked so voice.synthesize()
+    yields `chunks`, and the model path faked present."""
     fake_piper_module = MagicMock()
-    fake_piper_module.PiperVoice.load.return_value.synthesize_wav.side_effect = (
-        _fake_synthesize_wav
+    fake_piper_module.PiperVoice.load.return_value.synthesize.side_effect = lambda _text, *a, **k: (
+        iter(chunks)
     )
 
     sys.modules.pop("server", None)
@@ -34,9 +36,14 @@ def client():
         with patch.object(Path, "exists", return_value=True):
             import server
 
+    return server
+
+
+@pytest.fixture
+def client():
+    server = _import_server([FakeAudioChunk()])
     with server.app.test_client() as test_client:
         yield test_client
-
     sys.modules.pop("server", None)
 
 
@@ -63,3 +70,37 @@ def test_speak_requires_text_in_the_body(client):
 def test_speak_rejects_blank_text(client):
     res = client.post("/speak", json={"text": "   "})
     assert res.status_code == 400
+
+
+def test_speak_inserts_a_pause_between_sentences():
+    """voice.synthesize() yields one AudioChunk per sentence -- the server
+    should insert SENTENCE_PAUSE_SECONDS of silence between them instead of
+    concatenating them back-to-back into one continuous breath."""
+    sample_rate = 16000
+    chunk_samples = 100
+    server = _import_server(
+        [FakeAudioChunk(num_samples=chunk_samples, sample_rate=sample_rate)] * 3
+    )
+    try:
+        with server.app.test_client() as test_client:
+            res = test_client.post("/speak", json={"text": "One. Two. Three."})
+        assert res.status_code == 200
+        with wave.open(io.BytesIO(res.data)) as wav_file:
+            total_frames = wav_file.getnframes()
+        pause_frames = int(sample_rate * server.SENTENCE_PAUSE_SECONDS)
+        assert total_frames == chunk_samples * 3 + pause_frames * 2
+    finally:
+        sys.modules.pop("server", None)
+
+
+def test_speak_adds_no_pause_for_a_single_sentence():
+    """A one-sentence reply shouldn't grow any extra silence."""
+    chunk_samples = 100
+    server = _import_server([FakeAudioChunk(num_samples=chunk_samples)])
+    try:
+        with server.app.test_client() as test_client:
+            res = test_client.post("/speak", json={"text": "Just one sentence."})
+        with wave.open(io.BytesIO(res.data)) as wav_file:
+            assert wav_file.getnframes() == chunk_samples
+    finally:
+        sys.modules.pop("server", None)

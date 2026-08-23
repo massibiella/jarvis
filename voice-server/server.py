@@ -24,6 +24,12 @@ from piper import PiperVoice
 MODEL_DIR = Path(__file__).parent / "models"
 MODEL_PATH = MODEL_DIR / "en_GB-alan-medium.onnx"
 
+# Piper's voice.synthesize() already yields one AudioChunk per sentence (it
+# splits on ./!/? internally), but synthesize_wav() just concatenates them
+# back-to-back with no gap -- the whole reply gets read in one breath. This
+# is the silence inserted between consecutive sentences instead.
+SENTENCE_PAUSE_SECONDS = 1.0
+
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
@@ -48,7 +54,23 @@ def speak():
 
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav_file:
-        voice.synthesize_wav(text, wav_file)
+        is_first_chunk = True
+        silence = b""
+        for audio_chunk in voice.synthesize(text):
+            if is_first_chunk:
+                wav_file.setframerate(audio_chunk.sample_rate)
+                wav_file.setsampwidth(audio_chunk.sample_width)
+                wav_file.setnchannels(audio_chunk.sample_channels)
+                silence = b"\x00" * int(
+                    audio_chunk.sample_rate
+                    * SENTENCE_PAUSE_SECONDS
+                    * audio_chunk.sample_width
+                    * audio_chunk.sample_channels
+                )
+                is_first_chunk = False
+            else:
+                wav_file.writeframes(silence)
+            wav_file.writeframes(audio_chunk.audio_int16_bytes)
     buffer.seek(0)
 
     return send_file(buffer, mimetype="audio/wav")

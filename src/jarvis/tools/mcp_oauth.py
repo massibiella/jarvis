@@ -26,7 +26,11 @@ from mcp.client.auth.oauth2 import OAuthClientInformationFull, OAuthToken
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata, OAuthMetadata
 
 _TOKEN_DIR = Path.home() / ".jarvis" / "mcp_oauth"
-_CALLBACK_PORT = 8765
+# Deliberately not 8765 — voice-server/server.py already owns that port, and
+# IBKR's OAuth redirect landing there instead of this callback listener
+# fails silently (Flask 404, not a bind error, since this server just never
+# gets to claim the port first).
+_CALLBACK_PORT = 8766
 _REDIRECT_URI = f"http://localhost:{_CALLBACK_PORT}/callback"
 
 # IBKR's own metadata fails RFC 8414's issuer-match check: it's referenced as

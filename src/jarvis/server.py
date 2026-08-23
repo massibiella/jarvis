@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from jarvis.agent import Agent
 from jarvis.config import load_config
 from jarvis.runtime import build_agent
+from jarvis.telegram_bot import start_telegram_bot, stop_telegram_bot
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,11 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with build_agent(config) as agent:
             app.state.agent = agent
-            yield
+            telegram_app = await start_telegram_bot(config, agent, lock)
+            try:
+                yield
+            finally:
+                await stop_telegram_bot(telegram_app)
 
     app = FastAPI(lifespan=lifespan)
     app.add_middleware(

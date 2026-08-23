@@ -67,6 +67,32 @@ class LoggingConfig:
 
 
 @dataclass
+class TelegramConfig:
+    """Enables jarvis-server to also poll Telegram for messages.
+
+    `allowed_chat_ids` is mandatory and enforced by telegram_bot.py: any
+    message from a chat id not in this list is dropped, unanswered — Jarvis
+    has calendar/IBKR/memory tool access, so an unrestricted bot would be a
+    real security hole.
+    """
+
+    bot_token_env: str
+    allowed_chat_ids: list[int]
+
+    @property
+    def bot_token(self) -> str:
+        """Read the bot token from the environment lazily — same reasoning
+        as LLMConfig.api_key."""
+        token = os.environ.get(self.bot_token_env)
+        if not token:
+            raise ConfigError(
+                f"Environment variable {self.bot_token_env!r} is not set "
+                f"(required by telegram.bot_token_env in your config)"
+            )
+        return token
+
+
+@dataclass
 class MCPServerConfig:
     """How to reach one MCP server — exactly one of `command` or `url`.
 
@@ -100,6 +126,7 @@ class JarvisConfig:
     agent: AgentConfig
     logging: LoggingConfig
     mcp_servers: dict[str, MCPServerConfig] = field(default_factory=dict)
+    telegram: TelegramConfig | None = None
 
 
 def _require(data: dict[str, Any], section: str) -> dict[str, Any]:
@@ -153,6 +180,18 @@ def _parse_mcp_servers(data: dict[str, Any]) -> dict[str, MCPServerConfig]:
     return servers
 
 
+def _parse_telegram(data: dict[str, Any] | None) -> TelegramConfig | None:
+    if data is None:
+        return None
+    try:
+        return TelegramConfig(
+            bot_token_env=data["bot_token_env"],
+            allowed_chat_ids=list(data["allowed_chat_ids"]),
+        )
+    except KeyError as e:
+        raise ConfigError(f"Missing required telegram field: {e}") from e
+
+
 def _candidate_paths(explicit: str | Path | None) -> list[Path]:
     """Resolution order: explicit path > $JARVIS_CONFIG > ./config.yaml > ~/.jarvis/config.yaml."""
     if explicit is not None:
@@ -201,4 +240,5 @@ def load_config(path: str | Path | None = None) -> JarvisConfig:
         agent=_parse_agent(raw.get("agent", {})),
         logging=_parse_logging(raw.get("logging", {})),
         mcp_servers=_parse_mcp_servers(raw.get("mcp_servers", {})),
+        telegram=_parse_telegram(raw.get("telegram")),
     )

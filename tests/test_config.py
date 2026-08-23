@@ -111,3 +111,66 @@ mcp_servers:
 
     with pytest.raises(ConfigError, match="mcp_servers.weather"):
         load_config(config_file)
+
+
+def test_telegram_defaults_to_none(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(VALID_YAML)
+
+    config = load_config(config_file)
+
+    assert config.telegram is None
+
+
+def test_telegram_parsed(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        VALID_YAML
+        + """
+telegram:
+  bot_token_env: TEST_TELEGRAM_TOKEN
+  allowed_chat_ids: [111, 222]
+"""
+    )
+
+    config = load_config(config_file)
+
+    assert config.telegram is not None
+    assert config.telegram.bot_token_env == "TEST_TELEGRAM_TOKEN"
+    assert config.telegram.allowed_chat_ids == [111, 222]
+
+
+def test_telegram_missing_field_raises(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        VALID_YAML
+        + """
+telegram:
+  bot_token_env: TEST_TELEGRAM_TOKEN
+"""
+    )
+
+    with pytest.raises(ConfigError, match="allowed_chat_ids"):
+        load_config(config_file)
+
+
+def test_telegram_bot_token_reads_env_lazily(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        VALID_YAML
+        + """
+telegram:
+  bot_token_env: TEST_TELEGRAM_TOKEN
+  allowed_chat_ids: [111]
+"""
+    )
+    config = load_config(config_file)
+
+    monkeypatch.delenv("TEST_TELEGRAM_TOKEN", raising=False)
+    with pytest.raises(ConfigError, match="TEST_TELEGRAM_TOKEN"):
+        _ = config.telegram.bot_token
+
+    monkeypatch.setenv("TEST_TELEGRAM_TOKEN", "fake-token")
+    assert config.telegram.bot_token == "fake-token"

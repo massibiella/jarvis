@@ -38,3 +38,14 @@ agent:
 logging:
   level: WARNING # use INFO/DEBUG only when actively troubleshooting — INFO surfaces
                  # noisy third-party library internals too (e.g. every HTTP request)
+
+# Optional — enables jarvis-server to also poll Telegram for messages, so you
+# can text Jarvis from your phone. Long-polling only, no public URL/port-
+# forwarding needed. Omit this section entirely to leave Telegram disabled.
+# allowed_chat_ids is mandatory: any message from a chat id not listed here
+# is silently dropped (logged, no reply) — Jarvis has calendar/IBKR/memory
+# tool access, so an open bot would be a real security hole. Get your own
+# numeric chat id by messaging @userinfobot on Telegram.
+# telegram:
+#   bot_token_env: TELEGRAM_BOT_TOKEN
+#   allowed_chat_ids: [123456789]

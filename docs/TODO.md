@@ -19,7 +19,7 @@ Tracks the PRD (`../PRD.md`) feature by feature — checked off once a feature i
 - [x] Web browsing / research
 
 ## Nice to have
-- [ ] Mobile connection (e.g. message the user via Telegram)
+- [x] Mobile connection (Telegram) — `jarvis-server` optionally long-polls Telegram (`src/jarvis/telegram_bot.py`), started/stopped from its FastAPI lifespan, sharing the same `Agent`/history/lock as the web HUD. Chat-id allowlist enforced (`config.telegram.allowed_chat_ids`); unlisted senders are dropped, unanswered. Verified live: bot token authenticates, polling starts/stops cleanly, and a real message was delivered to the configured chat.
 - [ ] GraphDB for facts and relationships. Other ideas?
 - [ ] Auto-summarize a session into MemoryStore on exit (or periodically) — the agent can already decide *during* a conversation that something's worth remembering (via the `remember` tool), but nothing catches things it didn't explicitly flag in the moment. Different problem from the in-session compaction note in PLAN.md (that's about one long conversation not overflowing context; this is about remembering *across* separate runs of `jarvis`).
 - [ ] `system_prompt.md` needs real guardrails on the `remember` tool — right now it has zero judgment about whether something's actually worth persisting beyond "durable vs one-off." Live-tested: joke/non-serious content fed to it got saved into `memory_facts.md` as if it were real. Needs explicit instruction not to remember things said in jest/testing, and/or a check before persisting.

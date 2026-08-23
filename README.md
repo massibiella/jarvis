@@ -31,3 +31,55 @@ pytest
 ruff check .
 ruff format --check .
 ```
+
+## Status
+
+Milestone 1 (core agent skeleton) in progress. Config loading is implemented; the LLM adapter, agent loop, tool registry, and memory store are stubbed with `TODO`s — see `docs/PLAN.md` for what's next.
+
+## Front-End HUD
+
+The JARVIS-style interface described in [PRD.md](PRD.md) §4.5 and §4.12, talking to the real agent backend (`src/jarvis/agent.py`) over HTTP — not a stub.
+
+### What's here
+
+- **`frontend/`** — React + TypeScript + Vite app. Full-screen dark HUD with a canvas-based, audio-reactive "orb" at its center that visualizes the assistant's state (idle / listening / thinking / speaking) as a glowing circular waveform. Voice input via the browser's Speech Recognition API, with a text input as a fully-functional fallback. See `frontend/README.md` for how it works internally (file layout, data flow, the audio pipeline).
+- **`voice-server/`** — minimal local HTTP server wrapping [Piper](https://github.com/OHF-Voice/piper1-gpl), an open-source, fully offline neural TTS engine, so Jarvis has an actual voice. See `voice-server/README.md` for setup.
+
+### Running it
+
+```sh
+# Terminal 1 — agent backend (needs config.yaml + .env set up per Setup above)
+jarvis-server
+
+# Terminal 2 — voice server
+cd voice-server
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r requirements.txt
+# download the voice model — see voice-server/README.md
+./.venv/Scripts/python server.py
+
+# Terminal 3 — frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Open the printed local URL. Click **Speak** (Chrome/Edge required for voice input) or type into the text field — either path goes through the same real agent (`jarvis-server`'s `/chat`, tool-calling included) → Piper TTS → orb-reacts-to-audio loop. Without `jarvis-server` running, typed/spoken input still shows in the transcript but the request fails; without the voice server, replies still render as text but `speak()` fails silently in the console.
+
+### Tests
+
+```sh
+# frontend — Vitest + React Testing Library
+cd frontend
+npm run test
+
+# voice server — pytest, no model download needed (piper is mocked)
+cd voice-server
+./.venv/Scripts/python -m pytest
+```
+
+### Known gaps (expected at this stage)
+
+- No auth/multi-user support yet (PRD §4.6) — `jarvis-server` runs one shared `Agent`/conversation for the whole process, not one per browser client.
+- No streaming — the HUD's "Thinking…" state holds until the full reply is ready; the LLM adapters don't stream tokens yet.
+- STT uses the browser's built-in Speech Recognition API, which is convenient for a v1 demo but not itself open-source/local; a Whisper-based swap is the likely upgrade path if a fully local STT+TTS pipeline is wanted later.

@@ -18,6 +18,7 @@ from jarvis.config import JarvisConfig
 from jarvis.llm.base import ToolSpec
 from jarvis.llm.registry import get_adapter_class
 from jarvis.memory.store import MemoryStore
+from jarvis.tools.maps_tools import register_maps_tools
 from jarvis.tools.mcp_client import MCPToolClient
 from jarvis.tools.mcp_overrides import get_override, is_allowed
 from jarvis.tools.memory_tools import register_memory_tools
@@ -59,6 +60,7 @@ async def build_agent(config: JarvisConfig) -> AsyncIterator[Agent]:
     tools = ToolRegistry()
     register_weather_tools(tools)
     register_web_browsing_tools(tools)
+    register_maps_tools(tools)
     clients: list[MCPToolClient] = []
 
     try:

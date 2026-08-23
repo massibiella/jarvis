@@ -4,7 +4,7 @@ This is a snapshot of how Jarvis actually works *today* — present tense, no TO
 
 ## What runs today
 
-Two interfaces share one agent core (`runtime.build_agent()`): `jarvis`, a terminal chat agent, and `jarvis-server`, an HTTP server the frontend HUD (`frontend/`) talks to. Both load config, register native tools (weather, web browsing, memory), launch every configured MCP server and register its tools too, build an `Agent`, and run `Agent.step()` per turn — so the model can actually call real tools and use the result to answer. Verified live end-to-end, both interfaces.
+Two interfaces share one agent core (`runtime.build_agent()`): `jarvis`, a terminal chat agent, and `jarvis-server`, an HTTP server the frontend HUD (`frontend/`) talks to. Both load config, register native tools (weather, web browsing, maps, memory), launch every configured MCP server and register its tools too, build an `Agent`, and run `Agent.step()` per turn — so the model can actually call real tools and use the result to answer. Verified live end-to-end, both interfaces.
 
 ## Request flow, as it exists right now
 
@@ -13,6 +13,7 @@ runtime.build_agent(config)                        [src/jarvis/runtime.py] — s
   → get_adapter_class(...) + adapter.from_config    [src/jarvis/llm/registry.py, adapters/gemini_adapter.py]
   → register_weather_tools(tools)                   [tools/weather_tools.py] — native, no subprocess
   → register_web_browsing_tools(tools)               [tools/web_browsing_tools.py] — native
+  → register_maps_tools(tools)                       [tools/maps_tools.py] — native, TomTom (travel time/traffic)
   → for each config.mcp_servers entry (Google Calendar, IBKR):
       MCPToolClient(...).connect() + list_tools()    [src/jarvis/tools/mcp_client.py]
       → tools not on a server's allowlist skipped (mcp_overrides.is_allowed) —

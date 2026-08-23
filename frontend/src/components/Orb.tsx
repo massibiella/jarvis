@@ -30,6 +30,13 @@ const WINDOW = 3;
 const ACTIVE_FRACTION = 0.6;
 const REPEAT_LOBES = 3;
 
+// REPEAT_LOBES gives the ring 3-fold rotational symmetry (a spike every
+// 120°), which by default lands one spike pointing straight up -- reading
+// as lopsided rather than balanced. Rotating the whole ring's frame by a
+// fixed offset just settles it into a more visually even resting
+// orientation; 45° clockwise (eyeballed) is what looks balanced here.
+const BASE_ROTATION = Math.PI / 4;
+
 /** Smoothed amplitude (0-1) of the frequency band centered on ring-point i. */
 function sampleBand(freq: Uint8Array, i: number): number {
   const usable = freq.length - SKIP_BINS;
@@ -109,6 +116,7 @@ export function Orb({ state }: OrbProps) {
       // waveform ring
       ctx.save();
       ctx.translate(cx, cy);
+      ctx.rotate(BASE_ROTATION);
       if (anim === "thinking") {
         ctx.rotate(t * 0.6);
       }

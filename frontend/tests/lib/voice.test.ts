@@ -185,6 +185,62 @@ describe("audioEngine", () => {
     expect(ctx.resume).not.toHaveBeenCalled();
   });
 
+  describe("armAutoResume", () => {
+    it("resumes the AudioContext on the first pointerdown, then stops listening", async () => {
+      vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+      audioEngine.armAutoResume();
+
+      window.dispatchEvent(new Event("pointerdown"));
+      await Promise.resolve(); // let the async resume() call settle
+
+      const ctx = SuspendedFakeAudioContext.instances.at(-1)!;
+      expect(ctx.resume).toHaveBeenCalledOnce();
+
+      window.dispatchEvent(new Event("pointerdown"));
+      await Promise.resolve();
+      expect(ctx.resume).toHaveBeenCalledOnce(); // listener removed after first fire
+    });
+
+    it("resumes on the first keydown too", async () => {
+      vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+      audioEngine.armAutoResume();
+
+      window.dispatchEvent(new Event("keydown"));
+      await Promise.resolve();
+
+      const ctx = SuspendedFakeAudioContext.instances.at(-1)!;
+      expect(ctx.resume).toHaveBeenCalledOnce();
+    });
+
+    it("only arms once even if called multiple times", async () => {
+      vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+      audioEngine.armAutoResume();
+      audioEngine.armAutoResume();
+
+      window.dispatchEvent(new Event("pointerdown"));
+      await Promise.resolve();
+
+      // A second arm() call would have added a second listener, resuming
+      // via a second (freshly-created) context -- only one should exist.
+      expect(SuspendedFakeAudioContext.instances).toHaveLength(1);
+    });
+
+    it("the returned cleanup function removes the listeners before they fire", async () => {
+      vi.stubGlobal("AudioContext", SuspendedFakeAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+      const cleanupFn = audioEngine.armAutoResume();
+      cleanupFn();
+
+      window.dispatchEvent(new Event("pointerdown"));
+      await Promise.resolve();
+
+      expect(SuspendedFakeAudioContext.instances).toHaveLength(0);
+    });
+  });
+
   describe("playBuffer", () => {
     it("decodes the data and plays it through the analyser and destination, resolving when it ends", async () => {
       const { audioEngine } = await freshVoiceModule();

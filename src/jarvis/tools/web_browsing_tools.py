@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.tavily.com"
 _MAX_FETCH_CHARS = 4000
+_MAX_SNIPPET_CHARS = 300  # per web_search result — Tavily's own snippet length isn't bounded
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "...[truncated]"
 
 
 async def _tavily_request(endpoint: str, payload: dict, error_context: str) -> dict | str:
@@ -72,7 +77,7 @@ def register_web_browsing_tools(tools: ToolRegistry) -> None:
             return f"No web results found for '{query}'."
 
         return "\n".join(
-            f"{i}. {r['title']}\n   {r['url']}\n   {r['content']}"
+            f"{i}. {r['title']}\n   {r['url']}\n   {_truncate(r['content'], _MAX_SNIPPET_CHARS)}"
             for i, r in enumerate(results, start=1)
         )
 
@@ -92,6 +97,4 @@ def register_web_browsing_tools(tools: ToolRegistry) -> None:
             return f"Sorry, couldn't extract content from '{url}'."
 
         text = results[0].get("raw_content") or ""
-        if len(text) > _MAX_FETCH_CHARS:
-            text = text[:_MAX_FETCH_CHARS] + "\n...[truncated]"
-        return text or "(page had no readable text content)"
+        return _truncate(text, _MAX_FETCH_CHARS) or "(page had no readable text content)"

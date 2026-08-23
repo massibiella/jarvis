@@ -41,15 +41,15 @@ class AnthropicAdapter(LLMAdapter):
         max_tokens: int | None = None,
     ) -> LLMResponse:
         raise NotImplementedError("API Paid plan required. We'll leave this for later.")
-    
-        # Build message list according to Anthropic's specs 
+
+        # Build message list according to Anthropic's specs
         anthropic_messages = self._to_anthropic_message(messages)
 
         response = self._client.messages.create(
             model=self.model,
             max_tokens=max_tokens or self.default_max_tokens,
             system=system,
-            messages=anthropic_messages
+            messages=anthropic_messages,
         )
 
         # Extract response blocks
@@ -57,14 +57,10 @@ class AnthropicAdapter(LLMAdapter):
 
         # Format response in LLMResponse format, and return
 
-
-
     def _to_anthropic_message(self, messages: list[ChatMessage]) -> list[dict]:
         anthropic_messages = []
         for message in messages:
             # for now: just role + content, straight across
             # (msg.tool_calls / msg.tool_call_id come later, once tools are in play)
-            anthropic_messages.append(
-                {"role": message.role, "content": message.content}
-            )
+            anthropic_messages.append({"role": message.role, "content": message.content})
         return anthropic_messages

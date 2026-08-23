@@ -46,15 +46,14 @@ class MemoryStore:
     def write(
         self, relative_path: str, body: str, frontmatter: dict[str, Any] | None = None
     ) -> None:
-    
+
         full_path = self.user_dir / relative_path
         full_path.parent.mkdir(parents=True, exist_ok=True)
 
         yaml_text = yaml.safe_dump(frontmatter or {})
-        yaml_text = f'---\n{yaml_text}---\n'
+        yaml_text = f"---\n{yaml_text}---\n"
 
         full_path.write_text(f"{yaml_text}{body}")
-
 
     def append(
         self, relative_path: str, text: str, default_frontmatter: dict[str, Any] | None = None

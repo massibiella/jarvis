@@ -46,16 +46,16 @@ class GeminiAdapter(LLMAdapter):
         return cls(
             model=llm_config.model,
             api_key=llm_config.api_key,
-            default_max_tokens=llm_config.max_tokens
+            default_max_tokens=llm_config.max_tokens,
         )
 
     def chat(
-            self,
-            messages: list[ChatMessage],
-            tools: list[ToolSpec] | None = None,
-            system: str | None = None,
-            max_tokens: int | None = None,
-        ) -> LLMResponse:
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolSpec] | None = None,
+        system: str | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
 
         # Build message list according to Gemini's spec
         gemini_messages = self._to_gemini_message(messages)
@@ -67,7 +67,7 @@ class GeminiAdapter(LLMAdapter):
                 system_instruction=system,
                 max_output_tokens=max_tokens or self.default_max_tokens,
                 tools=self._to_gemini_tools(tools),
-            )
+            ),
         )
 
         # Translate gemini's reponse to something Jarvis understands
@@ -88,7 +88,6 @@ class GeminiAdapter(LLMAdapter):
                 )
 
         return LLMResponse(content=response.text, stop_reason=stop_reason, tool_calls=tool_calls)
-
 
     def _to_gemini_tools(self, tools: list[ToolSpec] | None) -> list[types.Tool] | None:
         if not tools:

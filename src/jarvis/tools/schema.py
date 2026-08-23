@@ -21,6 +21,7 @@ _PYTHON_TO_JSON_TYPES = {
     bool: "boolean",
 }
 
+
 def build_schema_from_signature(func: Callable[..., Any]) -> dict[str, Any]:
     """Return a JSON schema `{"type": "object", "properties": {...}, "required": [...]}`
     describing `func`'s parameters, derived via `inspect.signature(func)`.

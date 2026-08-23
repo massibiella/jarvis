@@ -46,6 +46,7 @@ class ToolRegistry:
         a name/description/schema (from MCPToolClient.list_tools()) and no
         local function to introspect — use add_tool() for those instead.
         """
+
         def wrapper(func):
             resolved_name = name if name is not None else func.__name__
             resolved_description = description if description is not None else func.__doc__
@@ -83,8 +84,7 @@ class ToolRegistry:
         if inspect.isawaitable(result):
             result = await result
 
-        return f"{result}" 
-
+        return f"{result}"
 
     def as_llm_tool_specs(self) -> list[ToolSpec]:
         """Return every registered tool as a ToolSpec, for passing to

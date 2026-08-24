@@ -129,10 +129,16 @@ body {
   max-width: 640px;
   width: 100%;
   min-height: 4rem;
+  /* Long replies (a multi-item check-in, say) can exceed this -- scroll
+     internally instead of overflowing the fixed-height .hud/body (which
+     has overflow: hidden) and getting silently clipped. */
+  max-height: 40vh;
+  overflow-y: auto;
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  padding-right: 0.25rem;
 }
 
 .transcript-line {

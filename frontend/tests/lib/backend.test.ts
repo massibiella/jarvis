@@ -140,6 +140,22 @@ describe("speak", () => {
     vi.clearAllMocks();
   });
 
+  it("forwards an AbortSignal to fetch, so Stop can cancel an in-flight TTS request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await speak("hi", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/speak"),
+      expect.objectContaining({ signal: controller.signal })
+    );
+  });
+
   it("posts the sanitized text to the TTS endpoint and plays the response", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

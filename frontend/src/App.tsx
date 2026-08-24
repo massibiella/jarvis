@@ -14,9 +14,20 @@ const STATE_LABEL: Record<AssistantState, string> = {
   speaking: "Speaking…",
 };
 
-// Pause before the launch greeting speaks, so it doesn't fire the instant
-// the HUD paints in.
-export const GREETING_DELAY_MS = 2000;
+// speak()'s fetch is aborted deliberately when the user hits Stop -- that
+// rejection is expected control flow, not a real failure, so it shouldn't
+// surface in errorText the way a genuine network/TTS error would.
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+// A short pause before the launch greeting/check-in speaks -- brief enough
+// to feel immediate, not a perceptual delay like the original 2000ms.
+// Still routed through setTimeout, not called directly, because that's
+// what makes the StrictMode double-mount fix work (see the effect below):
+// only a real, cancellable/reschedulable timer survives React's dev-mode
+// mount -> cleanup -> mount correctly.
+export const GREETING_DELAY_MS = 500;
 
 type View = "assistant" | "mindmap";
 
@@ -28,6 +39,13 @@ export default function App() {
   const [textInput, setTextInput] = useState("");
   const busyRef = useRef(false);
   const greetedRef = useRef(false);
+  // The AbortController for whatever speak() call is currently in flight --
+  // handleStopSpeaking() uses it to cancel a TTS request that hasn't
+  // returned audio yet (playback that HAS started is stopped separately,
+  // via audioEngine.stopSpeaking()). Ref, not state: nothing needs to
+  // re-render when this changes, only handleStopSpeaking needs to read it.
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   const { isSupported, isListening, transcript, interimTranscript, start, stop } =
     useSpeechRecognition();
@@ -65,11 +83,16 @@ export default function App() {
         }
         setState("speaking");
         setResponseText(greeting);
+        const controller = new AbortController();
+        ttsAbortRef.current = controller;
         try {
-          await speak(greeting);
+          await speak(greeting, controller.signal);
         } catch (err) {
-          setErrorText(err instanceof Error ? err.message : "Something went wrong.");
+          if (!isAbortError(err)) {
+            setErrorText(err instanceof Error ? err.message : "Something went wrong.");
+          }
         } finally {
+          ttsAbortRef.current = null;
           setState("idle");
           busyRef.current = false;
         }
@@ -98,13 +121,27 @@ export default function App() {
       const reply = await getAgentResponse(userText);
       setResponseText(reply);
       setState("speaking");
-      await speak(reply);
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
+      await speak(reply, controller.signal);
     } catch (err) {
-      setErrorText(err instanceof Error ? err.message : "Something went wrong.");
+      if (!isAbortError(err)) {
+        setErrorText(err instanceof Error ? err.message : "Something went wrong.");
+      }
     } finally {
+      ttsAbortRef.current = null;
       setState("idle");
       busyRef.current = false;
     }
+  }, []);
+
+  // Interrupts whichever half of "speaking" is currently happening: aborts
+  // the TTS fetch if it hasn't returned audio yet, and/or stops playback if
+  // it has already started. Both are safe to call unconditionally -- each
+  // is a no-op if that half isn't actually in progress.
+  const handleStopSpeaking = useCallback(() => {
+    audioEngine.stopSpeaking();
+    ttsAbortRef.current?.abort();
   }, []);
 
   // ---- Input handlers: mic (voice), text field (fallback), view switch ----
@@ -148,6 +185,16 @@ export default function App() {
     setView((v) => (v === "assistant" ? "mindmap" : "assistant"));
   }, [isListening, stop]);
 
+  // Long replies (e.g. a check-in) can be taller than .transcript's capped
+  // height (see App.css) -- scroll back to the top on each new reply so it
+  // reads from the start instead of staying wherever a previous, shorter
+  // reply had left the scroll position.
+  useEffect(() => {
+    if (transcriptRef.current) transcriptRef.current.scrollTop = 0;
+  }, [responseText]);
+
+  const isSpeaking = state === "speaking";
+
   // ---- Layout: header, assistant view (Orb + transcript + controls) or
   // ---- neural-map view, and the corner button that switches between them ----
   return (
@@ -166,7 +213,7 @@ export default function App() {
           <main className="hud-main">
             <Orb state={state} />
 
-            <div className="transcript">
+            <div className="transcript" ref={transcriptRef}>
               {(transcript || interimTranscript) && (
                 <p className="transcript-line user-line">
                   {transcript}
@@ -180,14 +227,18 @@ export default function App() {
 
           <footer className="hud-footer">
             <button
-              className={`mic-button ${isListening ? "active" : ""}`}
-              onClick={handleMicToggle}
-              disabled={!isSupported || state === "thinking" || state === "speaking"}
+              className={`mic-button ${isListening || isSpeaking ? "active" : ""}`}
+              onClick={isSpeaking ? handleStopSpeaking : handleMicToggle}
+              disabled={state === "thinking" || (!isSpeaking && !isSupported)}
               title={
-                isSupported ? "Toggle voice input" : "Voice input not supported in this browser"
+                isSpeaking
+                  ? "Stop Jarvis from speaking"
+                  : isSupported
+                    ? "Toggle voice input"
+                    : "Voice input not supported in this browser"
               }
             >
-              {isListening ? "Stop" : "Speak"}
+              {isSpeaking || isListening ? "Stop" : "Speak"}
             </button>
 
             <form className="text-fallback" onSubmit={handleTextSubmit}>

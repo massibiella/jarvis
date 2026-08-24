@@ -44,11 +44,12 @@ export function sanitizeForSpeech(text: string): string {
     .trim();
 }
 
-export async function speak(text: string): Promise<void> {
+export async function speak(text: string, signal?: AbortSignal): Promise<void> {
   const res = await fetch(TTS_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text: sanitizeForSpeech(text) }),
+    signal,
   });
   if (!res.ok) {
     throw new Error(`TTS server error: ${res.status} ${res.statusText}`);

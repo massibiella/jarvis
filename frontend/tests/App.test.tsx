@@ -32,21 +32,30 @@ describe("App", () => {
   it("speaks a time-of-day greeting on mount when no check-in is due", async () => {
     const { speak } = await import("../src/lib/backend");
     await renderSettled();
-    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+    expect(speak).toHaveBeenCalledWith(
+      expect.stringMatching(/good (morning|afternoon|evening), sir\./i),
+      expect.any(AbortSignal)
+    );
   });
 
   it("speaks the check-in instead of the greeting when one is due", async () => {
     const { getCheckin, speak } = await import("../src/lib/backend");
     (getCheckin as ReturnType<typeof vi.fn>).mockResolvedValueOnce("Good morning. Here's your briefing.");
     await renderSettled();
-    expect(speak).toHaveBeenCalledWith("Good morning. Here's your briefing.");
+    expect(speak).toHaveBeenCalledWith(
+      "Good morning. Here's your briefing.",
+      expect.any(AbortSignal)
+    );
   });
 
   it("falls back to the greeting when the check-in request fails", async () => {
     const { getCheckin, speak } = await import("../src/lib/backend");
     (getCheckin as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("network error"));
     await renderSettled();
-    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+    expect(speak).toHaveBeenCalledWith(
+      expect.stringMatching(/good (morning|afternoon|evening), sir\./i),
+      expect.any(AbortSignal)
+    );
   });
 
   // Regression test for a real bug: main.tsx wraps the app in <StrictMode>,
@@ -72,7 +81,10 @@ describe("App", () => {
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
     expect(speak).toHaveBeenCalledTimes(1);
-    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+    expect(speak).toHaveBeenCalledWith(
+      expect.stringMatching(/good (morning|afternoon|evening), sir\./i),
+      expect.any(AbortSignal)
+    );
   });
 
   it("renders the HUD idle state", async () => {
@@ -92,7 +104,42 @@ describe("App", () => {
 
     await waitFor(() => expect(getAgentResponse).toHaveBeenCalledWith("hello jarvis"));
     await waitFor(() => expect(screen.getByText("Hello from the agent")).toBeInTheDocument());
-    expect(speak).toHaveBeenCalledWith("Hello from the agent");
+    expect(speak).toHaveBeenCalledWith("Hello from the agent", expect.any(AbortSignal));
+    await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
+  });
+
+  it("shows a Stop button while speaking, and clicking it aborts speak() and stops playback", async () => {
+    const { speak } = await import("../src/lib/backend");
+    const { audioEngine } = await import("../src/lib/voice");
+    const stopSpeakingSpy = vi.spyOn(audioEngine, "stopSpeaking");
+
+    // renderSettled() itself triggers a speak() call for the mount-time
+    // greeting -- set the hanging implementation up only after that's
+    // settled, so it targets the reply to "hello jarvis" below, not the
+    // greeting (which would otherwise hang and never let renderSettled()
+    // reach its own "Standing by" wait).
+    await renderSettled();
+
+    let releaseSpeak: () => void = () => {};
+    (speak as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseSpeak = resolve;
+        })
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello jarvis" } });
+    fireEvent.click(screen.getByText("Send"));
+
+    await waitFor(() => expect(screen.getByText("Stop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    expect(stopSpeakingSpy).toHaveBeenCalledOnce();
+    const [, signal] = (speak as ReturnType<typeof vi.fn>).mock.calls.at(-1) as [string, AbortSignal];
+    expect(signal.aborted).toBe(true);
+
+    releaseSpeak();
     await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
   });
 

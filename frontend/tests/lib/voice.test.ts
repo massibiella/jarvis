@@ -278,6 +278,42 @@ describe("audioEngine", () => {
       await expect(audioEngine.playBuffer(new ArrayBuffer(8))).rejects.toThrow(/playback failed/i);
     });
   });
+
+  describe("stopSpeaking", () => {
+    it("is a no-op when nothing is currently playing", async () => {
+      const { audioEngine } = await freshVoiceModule();
+      expect(() => audioEngine.stopSpeaking()).not.toThrow();
+    });
+
+    it("stops the in-progress source, which resolves the pending playBuffer() promise", async () => {
+      // Unlike the base fake, start() here does NOT fire onended on its
+      // own -- playback only "ends" if something explicitly stops it,
+      // letting the test control exactly when that happens.
+      class HangingBufferSourceNode extends FakeBufferSourceNode {
+        start = vi.fn();
+      }
+      class HangingAudioContext extends FakeAudioContext {
+        createBufferSource() {
+          return new HangingBufferSourceNode();
+        }
+      }
+      vi.stubGlobal("AudioContext", HangingAudioContext);
+      const { audioEngine } = await freshVoiceModule();
+
+      const playPromise = audioEngine.playBuffer(new ArrayBuffer(8));
+      // Let playBuffer's internal awaits (resume, decodeAudioData) settle
+      // so the source actually gets created/tracked before we stop it.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      audioEngine.stopSpeaking();
+
+      await expect(playPromise).resolves.toBeUndefined();
+      const source = FakeBufferSourceNode.instances.at(-1)!;
+      expect(source.stop).toHaveBeenCalledOnce();
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

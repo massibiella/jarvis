@@ -172,6 +172,19 @@ class AudioEngine {
     });
   }
 
+  /**
+   * User-requested interrupt: stops whatever TTS reply is currently
+   * playing, if any. Calling .stop() on an AudioBufferSourceNode still
+   * fires its 'ended' event, so playBuffer()'s pending promise resolves
+   * normally through the same onended handler it already has -- callers
+   * awaiting speak() just see it finish early, not hang or reject.
+   * Safe to call with nothing playing (no-op).
+   */
+  stopSpeaking(): void {
+    this.currentSource?.stop();
+    this.currentSource = null;
+  }
+
   /** Snapshot of frequency-bin amplitudes (0-255), or null if no audio graph exists yet. */
   getFrequencyData(): Uint8Array | null {
     if (!this.analyser || !this.freqData) return null;

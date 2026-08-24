@@ -155,7 +155,7 @@ def _morning_prompt(config: CheckinConfig) -> str:
 
 
 def _evening_prompt(config: CheckinConfig) -> str:
-    steps = [_PERFORMANCE_STEP, _INTERESTS_NEWS_STEP, _HOLDINGS_NEWS_STEP]
+    steps = [_PERFORMANCE_STEP, _HOLDINGS_NEWS_STEP, _INTERESTS_NEWS_STEP]
     return (
         "This is an automated evening check-in, not something I typed. Start with a brief "
         "welcoming line (e.g. \"Welcome back. Here's a summary of your portfolio performance "

@@ -17,6 +17,7 @@ from jarvis.tools.registry import ToolRegistry
 _CATEGORY_DESCRIPTIONS = {
     "facts": "Durable facts about the user — plans, work, ongoing life situations.",
     "preferences": "How the user likes to communicate and be helped.",
+    "interests": "Topics the user wants news tracked on, surfaced each morning check-in.",
 }
 
 
@@ -24,9 +25,12 @@ def register_memory_tools(tools: ToolRegistry, memory: MemoryStore) -> None:
     @tools.register()
     def remember(category: str, text: str) -> str:
         """Save something worth remembering long-term, for future conversations.
-        category must be exactly 'facts' or 'preferences'.
+        category must be exactly 'facts', 'preferences', or 'interests'.
         Use 'facts' for durable info about the user (plans, work, ongoing situations).
         Use 'preferences' for how they like to communicate/be helped.
+        Use 'interests' when the user asks you to track news/updates on a topic
+        (e.g. "tell me news about the Fed") — store the topic concisely (e.g.
+        "Federal Reserve interest rate decisions"), not a running log of headlines.
         """
         if category not in _CATEGORY_DESCRIPTIONS:
             return f"Error: category must be one of {list(_CATEGORY_DESCRIPTIONS)}."

@@ -19,6 +19,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import uvicorn
 from dotenv import load_dotenv
@@ -27,6 +28,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from jarvis.agent import Agent
+from jarvis.checkin import (
+    determine_checkin,
+    load_state,
+    mark_ran,
+    run_checkin,
+    save_state,
+    state_path,
+)
 from jarvis.config import load_config
 from jarvis.runtime import build_agent
 
@@ -44,6 +53,10 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class CheckinResponse(BaseModel):
+    reply: str | None
 
 
 def _cors_origins() -> list[str]:
@@ -84,6 +97,23 @@ def create_app() -> FastAPI:
         async with lock:
             reply = await agent.step(req.text)
         return ChatResponse(reply=reply)
+
+    @app.get("/checkin", response_model=CheckinResponse)
+    async def checkin() -> CheckinResponse:
+        if not config.checkin.enabled:
+            return CheckinResponse(reply=None)
+
+        agent: Agent = app.state.agent
+        path = state_path(config.memory.root_dir)
+        async with lock:
+            state = load_state(path)
+            kind = determine_checkin(datetime.now(), config.checkin, state)
+            if kind is None:
+                return CheckinResponse(reply=None)
+            reply = await run_checkin(agent, kind, config.checkin)
+            mark_ran(state, kind)
+            save_state(path, state)
+        return CheckinResponse(reply=reply)
 
     return app
 

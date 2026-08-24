@@ -80,3 +80,21 @@ export async function getAgentResponse(userText: string): Promise<string> {
   const data = (await res.json()) as { reply: string };
   return data.reply;
 }
+
+// ---------------------------------------------------------------------------
+// Check-in: polls the Jarvis agent backend's /checkin endpoint (see
+// src/jarvis/checkin.py) once on launch. Returns null when no morning/evening
+// check-in is due right now (outside the configured window, already run
+// today, or check-ins aren't enabled) -- App.tsx falls back to the static
+// time-of-day greeting in that case.
+// ---------------------------------------------------------------------------
+const CHECKIN_ENDPOINT = import.meta.env.VITE_CHECKIN_ENDPOINT ?? "http://localhost:8000/checkin";
+
+export async function getCheckin(): Promise<string | null> {
+  const res = await fetch(CHECKIN_ENDPOINT);
+  if (!res.ok) {
+    throw new Error(`Checkin server error: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { reply: string | null };
+  return data.reply;
+}

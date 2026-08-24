@@ -67,6 +67,22 @@ class LoggingConfig:
 
 
 @dataclass
+class CheckinConfig:
+    """Static settings for the automated morning/evening check-in — see
+    docs/PLAN.md "Daily morning/evening check-ins". Disabled unless
+    explicitly turned on: home/work are needed for commute reporting,
+    and there's no sane default address to guess.
+    """
+
+    enabled: bool = False
+    home: str | None = None
+    work: str | None = None
+    morning_start_hour: int = 5
+    morning_end_hour: int = 11
+    evening_start_hour: int = 17  # evening window is [start, 24) — open-ended
+
+
+@dataclass
 class MCPServerConfig:
     """How to reach one MCP server — exactly one of `command` or `url`.
 
@@ -100,6 +116,7 @@ class JarvisConfig:
     agent: AgentConfig
     logging: LoggingConfig
     mcp_servers: dict[str, MCPServerConfig] = field(default_factory=dict)
+    checkin: CheckinConfig = field(default_factory=CheckinConfig)
 
 
 def _require(data: dict[str, Any], section: str) -> dict[str, Any]:
@@ -140,6 +157,17 @@ def _parse_agent(data: dict[str, Any]) -> AgentConfig:
 
 def _parse_logging(data: dict[str, Any]) -> LoggingConfig:
     return LoggingConfig(level=data.get("level", "INFO"))
+
+
+def _parse_checkin(data: dict[str, Any]) -> CheckinConfig:
+    return CheckinConfig(
+        enabled=data.get("enabled", False),
+        home=data.get("home"),
+        work=data.get("work"),
+        morning_start_hour=data.get("morning_start_hour", 5),
+        morning_end_hour=data.get("morning_end_hour", 11),
+        evening_start_hour=data.get("evening_start_hour", 17),
+    )
 
 
 def _parse_mcp_servers(data: dict[str, Any]) -> dict[str, MCPServerConfig]:
@@ -201,4 +229,5 @@ def load_config(path: str | Path | None = None) -> JarvisConfig:
         agent=_parse_agent(raw.get("agent", {})),
         logging=_parse_logging(raw.get("logging", {})),
         mcp_servers=_parse_mcp_servers(raw.get("mcp_servers", {})),
+        checkin=_parse_checkin(raw.get("checkin", {})),
     )

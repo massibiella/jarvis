@@ -14,6 +14,17 @@ memory:
 agent:
   system_prompt_file: null # optional path to override the built-in default system prompt
 
+# Optional — disabled unless enabled: true. Checked only at process
+# startup (no background scheduler): fires once per local calendar day
+# if the current time falls in one of the windows below.
+# checkin:
+#   enabled: true
+#   home: "123 Main St, Springfield"
+#   work: "456 Office Rd, Springfield"
+#   morning_start_hour: 5   # local 24h clock; morning window is [start, end)
+#   morning_end_hour: 11
+#   evening_start_hour: 17  # evening window is [start, 24)
+
 # Each entry is either a local subprocess (stdio transport, `command`) or a
 # remote server (Streamable HTTP + OAuth, `url`) — exactly one of the two.
 # command[0] must be the server's own venv Python (or e.g. "npx" for an

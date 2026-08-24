@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAgentResponse, sanitizeForSpeech, speak } from "../../src/lib/backend";
+import { getAgentResponse, getCheckin, sanitizeForSpeech, speak } from "../../src/lib/backend";
 
 // backend.ts always imports voice.ts for audioEngine.playBuffer(); stub it
 // out so these tests never touch the real Web Audio API. Playback timing
@@ -42,6 +42,45 @@ describe("getAgentResponse", () => {
     );
 
     await expect(getAgentResponse("hi")).rejects.toThrow(/Agent server error/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCheckin: GETs the Jarvis agent backend's /checkin endpoint. fetch is
+// faked so no real network is used.
+// ---------------------------------------------------------------------------
+describe("getCheckin", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the reply when a check-in is due", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ reply: "Good morning. Here's your briefing." }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getCheckin()).resolves.toBe("Good morning. Here's your briefing.");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/checkin"));
+  });
+
+  it("returns null when no check-in is due", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ reply: null }) })
+    );
+
+    await expect(getCheckin()).resolves.toBeNull();
+  });
+
+  it("rejects when the checkin server responds with an error status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: "Internal Error" })
+    );
+
+    await expect(getCheckin()).rejects.toThrow(/Checkin server error/);
   });
 });
 

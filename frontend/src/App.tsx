@@ -3,7 +3,7 @@ import { Orb } from "./components/Orb";
 import { MicLevelBar } from "./components/MicLevelBar";
 import { MindMap } from "./components/MindMap";
 import { audioEngine, useSpeechRecognition } from "./lib/voice";
-import { speak, getAgentResponse } from "./lib/backend";
+import { speak, getAgentResponse, getCheckin } from "./lib/backend";
 import { getGreeting } from "./lib/greeting";
 import { mindMapData, type AssistantState } from "./types";
 
@@ -39,7 +39,8 @@ export default function App() {
   // of the first reply.
   useEffect(() => audioEngine.armAutoResume(), []);
 
-  // Speak a time-of-day greeting once on launch, before any user input.
+  // Speak a check-in (if one's due -- see src/jarvis/checkin.py) or, failing
+  // that, a plain time-of-day greeting, once on launch before any user input.
   // Guarded by a ref (not just the empty dep array) because StrictMode
   // double-invokes effects in dev, which would otherwise fire speak() twice.
   useEffect(() => {
@@ -47,15 +48,28 @@ export default function App() {
     greetedRef.current = true;
     const timer = setTimeout(() => {
       busyRef.current = true;
-      const greeting = getGreeting();
-      setState("speaking");
-      setResponseText(greeting);
-      speak(greeting)
-        .catch((err) => setErrorText(err instanceof Error ? err.message : "Something went wrong."))
-        .finally(() => {
+      void (async () => {
+        let greeting: string;
+        try {
+          // null means no check-in is due right now (outside the window,
+          // already run today, or disabled) -- fall back to the greeting.
+          greeting = (await getCheckin()) ?? getGreeting();
+        } catch {
+          // Checkin endpoint unreachable/erroring shouldn't block the HUD's
+          // launch greeting -- fall back the same way as a "not due" reply.
+          greeting = getGreeting();
+        }
+        setState("speaking");
+        setResponseText(greeting);
+        try {
+          await speak(greeting);
+        } catch (err) {
+          setErrorText(err instanceof Error ? err.message : "Something went wrong.");
+        } finally {
           setState("idle");
           busyRef.current = false;
-        });
+        }
+      })();
     }, GREETING_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);

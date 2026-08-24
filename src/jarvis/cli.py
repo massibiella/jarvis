@@ -11,10 +11,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 
 from dotenv import load_dotenv
 
 from jarvis.agent import Agent
+from jarvis.checkin import (
+    determine_checkin,
+    load_state,
+    mark_ran,
+    run_checkin,
+    save_state,
+    state_path,
+)
 from jarvis.config import load_config
 from jarvis.runtime import build_agent
 
@@ -42,6 +51,19 @@ async def _main() -> None:
     logging.getLogger("google_genai").setLevel(logging.ERROR)
 
     async with build_agent(config) as agent:
+        if config.checkin.enabled:
+            path = state_path(config.memory.root_dir)
+            state = load_state(path)
+            kind = determine_checkin(datetime.now(), config.checkin, state)
+            if kind is not None:
+                try:
+                    print(await run_checkin(agent, kind, config.checkin))
+                except Exception as e:
+                    logger.error("Check-in (%s) failed: %s", kind, e)
+                else:
+                    mark_ran(state, kind)
+                    save_state(path, state)
+
         while True:
             try:
                 user_input = await asyncio.to_thread(input, "you> ")

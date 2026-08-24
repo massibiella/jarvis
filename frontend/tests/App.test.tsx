@@ -8,6 +8,7 @@ import App, { GREETING_DELAY_MS } from "../src/App";
 // without needing to mock lib/voice at all.
 vi.mock("../src/lib/backend", () => ({
   getAgentResponse: vi.fn().mockResolvedValue("Hello from the agent"),
+  getCheckin: vi.fn().mockResolvedValue(null),
   speak: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -27,8 +28,22 @@ async function renderSettled() {
 }
 
 describe("App", () => {
-  it("speaks a time-of-day greeting on mount", async () => {
+  it("speaks a time-of-day greeting on mount when no check-in is due", async () => {
     const { speak } = await import("../src/lib/backend");
+    await renderSettled();
+    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+  });
+
+  it("speaks the check-in instead of the greeting when one is due", async () => {
+    const { getCheckin, speak } = await import("../src/lib/backend");
+    (getCheckin as ReturnType<typeof vi.fn>).mockResolvedValueOnce("Good morning. Here's your briefing.");
+    await renderSettled();
+    expect(speak).toHaveBeenCalledWith("Good morning. Here's your briefing.");
+  });
+
+  it("falls back to the greeting when the check-in request fails", async () => {
+    const { getCheckin, speak } = await import("../src/lib/backend");
+    (getCheckin as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("network error"));
     await renderSettled();
     expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
   });

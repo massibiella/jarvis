@@ -1,4 +1,4 @@
-"""Entry point: `jarvis` on the command line.
+"""Entry point: `jarvis-cli` on the command line.
 
 Loads config and runs a terminal chat loop through `agent.step()`, using
 `runtime.build_agent()` for setup (adapter, tools, MCP clients, memory) and

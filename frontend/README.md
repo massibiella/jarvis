@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-The app expects the Jarvis agent backend (`jarvis-server`, see the root
+The app expects the Jarvis agent backend (`jarvis`, see the root
 [`README.md`](../README.md)) for chat, and a local Piper TTS server for
 voice output — see [`../voice-server/README.md`](../voice-server/README.md).
 Without the agent backend, sending a message shows an error instead of a

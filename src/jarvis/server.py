@@ -7,7 +7,7 @@ lifetime, matching today's single-user scope — auth/multi-user isolation
 per HTTP client. Requests are serialized through a lock since `Agent.step()`
 mutates shared history and two concurrent calls would interleave it.
 
-Run: `jarvis-server` (see pyproject.toml). Reuses `runtime.build_agent()`,
+Run: `jarvis` (see pyproject.toml). Reuses `runtime.build_agent()`,
 the same setup/teardown `cli.py` uses, so this and the terminal chat loop
 never drift apart.
 """

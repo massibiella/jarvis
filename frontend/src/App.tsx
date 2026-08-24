@@ -41,12 +41,16 @@ export default function App() {
 
   // Speak a check-in (if one's due -- see src/jarvis/checkin.py) or, failing
   // that, a plain time-of-day greeting, once on launch before any user input.
-  // Guarded by a ref (not just the empty dep array) because StrictMode
-  // double-invokes effects in dev, which would otherwise fire speak() twice.
+  //
+  // greetedRef is checked inside the timeout, not around it -- StrictMode's
+  // dev-mode double-mount cancels the first timer, and a check placed
+  // outside would then block a second one from ever being scheduled, so
+  // nothing would fire in a real browser. Keeping the check inside means
+  // whichever timer actually survives to fire is the one that counts.
   useEffect(() => {
-    if (greetedRef.current) return;
-    greetedRef.current = true;
     const timer = setTimeout(() => {
+      if (greetedRef.current) return;
+      greetedRef.current = true;
       busyRef.current = true;
       void (async () => {
         let greeting: string;

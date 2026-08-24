@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import App, { GREETING_DELAY_MS } from "../src/App";
@@ -45,6 +46,32 @@ describe("App", () => {
     const { getCheckin, speak } = await import("../src/lib/backend");
     (getCheckin as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("network error"));
     await renderSettled();
+    expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
+  });
+
+  // Regression test for a real bug: main.tsx wraps the app in <StrictMode>,
+  // which double-invokes effects in dev (mount -> cleanup -> mount) to catch
+  // missing cleanup. The launch effect used to guard scheduling with a ref
+  // check *before* setTimeout -- StrictMode's simulated cleanup cancelled
+  // the first timer, and the ref (already set) blocked the second
+  // invocation from scheduling a replacement, so nothing ever spoke in a
+  // real browser tab. renderSettled()/render() above don't use StrictMode,
+  // so they never caught this -- this test renders through it deliberately.
+  it("still speaks exactly once when mounted through StrictMode's double-invoke", async () => {
+    const { speak } = await import("../src/lib/backend");
+    (speak as ReturnType<typeof vi.fn>).mockClear();
+    vi.useFakeTimers();
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GREETING_DELAY_MS);
+    });
+    vi.useRealTimers();
+    await waitFor(() => expect(screen.getByText("Standing by")).toBeInTheDocument());
+    expect(speak).toHaveBeenCalledTimes(1);
     expect(speak).toHaveBeenCalledWith(expect.stringMatching(/good (morning|afternoon|evening), sir\./i));
   });
 

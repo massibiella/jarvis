@@ -27,8 +27,8 @@ dev = [
 ]
 
 [project.scripts]
-jarvis = "jarvis.cli:main"
-jarvis-server = "jarvis.server:main"
+jarvis-cli = "jarvis.cli:main"
+jarvis = "jarvis.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jarvis"]

@@ -12,7 +12,7 @@ cp config/config.example.yaml config.yaml
 cp .env.example .env   # then fill in your real API keys — .env is gitignored
 ```
 
-`jarvis` loads `.env` automatically on startup; alternatively `export GEMINI_API_KEY=...` in your shell works too.
+Both `jarvis` (the UI backend, see "Front-End HUD" below) and `jarvis-cli` (a plain terminal chat loop) load `.env` automatically on startup; alternatively `export GEMINI_API_KEY=...` in your shell works too.
 
 ### MCP servers (optional)
 
@@ -20,9 +20,9 @@ Weather is a built-in native tool, no setup needed. For tools that live in a sep
 
 Then add it to `config.yaml`'s `mcp_servers` section — see `config/config.example.yaml` for the format, and `docs/PLAN.md`'s "MCP integrations" section for the calendar server's specific Google Cloud Console setup steps.
 
-For the calendar server specifically, you also need to authenticate once before first use — run `npx @cocal/google-calendar-mcp auth`, it opens a browser link to sign in and grant access, and caches the resulting token locally. `jarvis` itself won't prompt for this; if calendar tools fail with an auth error, this is the step to (re-)run.
+For the calendar server specifically, you also need to authenticate once before first use — run `npx @cocal/google-calendar-mcp auth`, it opens a browser link to sign in and grant access, and caches the resulting token locally. Jarvis itself won't prompt for this; if calendar tools fail with an auth error, this is the step to (re-)run.
 
-Some MCP servers are remote instead of local — configured with `url` instead of `command` (e.g. IBKR's official hosted connector). No local process needed for these; `jarvis` itself opens a browser for you to authorize on first connect, and caches the resulting token under `~/.jarvis/mcp_oauth/`. Nothing to run manually first, unlike the calendar server above.
+Some MCP servers are remote instead of local — configured with `url` instead of `command` (e.g. IBKR's official hosted connector). No local process needed for these; Jarvis itself opens a browser for you to authorize on first connect, and caches the resulting token under `~/.jarvis/mcp_oauth/`. Nothing to run manually first, unlike the calendar server above.
 
 ## Development
 
@@ -49,7 +49,7 @@ The JARVIS-style interface described in [PRD.md](PRD.md) §4.5 and §4.12, talki
 
 ```sh
 # Terminal 1 — agent backend (needs config.yaml + .env set up per Setup above)
-jarvis-server
+jarvis
 
 # Terminal 2 — voice server
 cd voice-server
@@ -64,7 +64,7 @@ npm install
 npm run dev
 ```
 
-Open the printed local URL. Click **Speak** (Chrome/Edge required for voice input) or type into the text field — either path goes through the same real agent (`jarvis-server`'s `/chat`, tool-calling included) → Piper TTS → orb-reacts-to-audio loop. Without `jarvis-server` running, typed/spoken input still shows in the transcript but the request fails; without the voice server, replies still render as text but `speak()` fails silently in the console.
+Open the printed local URL. Click **Speak** (Chrome/Edge required for voice input) or type into the text field — either path goes through the same real agent (`jarvis`'s `/chat`, tool-calling included) → Piper TTS → orb-reacts-to-audio loop. Without `jarvis` running, typed/spoken input still shows in the transcript but the request fails; without the voice server, replies still render as text but `speak()` fails silently in the console.
 
 ### Tests
 
@@ -80,6 +80,6 @@ cd voice-server
 
 ### Known gaps (expected at this stage)
 
-- No auth/multi-user support yet (PRD §4.6) — `jarvis-server` runs one shared `Agent`/conversation for the whole process, not one per browser client.
+- No auth/multi-user support yet (PRD §4.6) — `jarvis` runs one shared `Agent`/conversation for the whole process, not one per browser client.
 - No streaming — the HUD's "Thinking…" state holds until the full reply is ready; the LLM adapters don't stream tokens yet.
 - STT uses the browser's built-in Speech Recognition API, which is convenient for a v1 demo but not itself open-source/local; a Whisper-based swap is the likely upgrade path if a fully local STT+TTS pipeline is wanted later.

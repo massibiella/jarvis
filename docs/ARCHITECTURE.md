@@ -4,7 +4,7 @@ This is a snapshot of how Jarvis actually works *today* — present tense, no TO
 
 ## What runs today
 
-Two interfaces share one agent core (`runtime.build_agent()`): `jarvis`, a terminal chat agent, and `jarvis-server`, an HTTP server the frontend HUD (`frontend/`) talks to. Both load config, register native tools (weather, web browsing, maps, memory), launch every configured MCP server and register its tools too, build an `Agent`, and run `Agent.step()` per turn — so the model can actually call real tools and use the result to answer. Verified live end-to-end, both interfaces.
+Two interfaces share one agent core (`runtime.build_agent()`): `jarvis-cli`, a terminal chat agent, and `jarvis`, an HTTP server the frontend HUD (`frontend/`) talks to. Both load config, register native tools (weather, web browsing, maps, memory), launch every configured MCP server and register its tools too, build an `Agent`, and run `Agent.step()` per turn — so the model can actually call real tools and use the result to answer. Verified live end-to-end, both interfaces.
 
 ## Request flow, as it exists right now
 
@@ -29,12 +29,12 @@ runtime.build_agent(config)                        [src/jarvis/runtime.py] — s
     → Agent.__init__ appends memory.load_index() to the system prompt
   → on the caller's `async with` block exiting (clean, or a crash): every MCPToolClient is closed
 
-jarvis (console script)                              [src/jarvis/cli.py: main() → asyncio.run(_main())]
+jarvis-cli (console script)                          [src/jarvis/cli.py: main() → asyncio.run(_main())]
   → load_dotenv() + load_config()                    [src/jarvis/config.py]
   → async with build_agent(config) as agent:
       loop: input("you> ") → await agent.step(user_input) → print result
 
-jarvis-server (console script)                       [src/jarvis/server.py: main() → uvicorn.run(create_app())]
+jarvis (console script)                              [src/jarvis/server.py: main() → uvicorn.run(create_app())]
   → load_dotenv() + load_config()
   → FastAPI app; lifespan does async with build_agent(config) as agent: app.state.agent = agent
   → POST /chat {text} → (behind an asyncio.Lock, since one Agent's history
@@ -55,7 +55,7 @@ jarvis/
 │   ├── config.py                        # JarvisConfig dataclasses + load_config()
 │   ├── runtime.py                       # build_agent(): shared setup/teardown, used by cli.py and server.py
 │   ├── cli.py                           # terminal entry point — see "Request flow" above
-│   ├── server.py                        # HTTP entry point (jarvis-server) — what frontend/ talks to
+│   ├── server.py                        # HTTP entry point (jarvis) — what frontend/ talks to
 │   ├── system_prompt.md                 # built-in default system prompt
 │   ├── agent.py                         # Agent orchestrator — full tool-call loop, wired into cli.py and server.py
 │   ├── llm/
@@ -97,7 +97,7 @@ jarvis/
 
 **System prompt (`system_prompt.md`)** — the built-in default, loaded by `runtime.load_system_prompt()`; `config.agent.system_prompt_file`, if set, overrides it with a different file instead.
 
-**HTTP server (`server.py`)** — `jarvis-server` (FastAPI + uvicorn): one shared `Agent` built via `runtime.build_agent()` at startup (FastAPI `lifespan`), torn down on shutdown. `POST /chat {text} -> {reply}` calls `agent.step()` behind an `asyncio.Lock`, since one `Agent`'s history isn't safe for two concurrent callers (see `PLAN.md`'s "Resolved: concurrent requests against one Agent"). CORS restricted to the Vite dev origin by default (`JARVIS_CORS_ORIGINS` env var to override). This is what `frontend/`'s HUD talks to — see `frontend/src/lib/backend.ts`'s `getAgentResponse()`. No streaming — `Agent.step()`/the LLM adapters return a full reply at once, not tokens incrementally.
+**HTTP server (`server.py`)** — `jarvis` (FastAPI + uvicorn): one shared `Agent` built via `runtime.build_agent()` at startup (FastAPI `lifespan`), torn down on shutdown. `POST /chat {text} -> {reply}` calls `agent.step()` behind an `asyncio.Lock`, since one `Agent`'s history isn't safe for two concurrent callers (see `PLAN.md`'s "Resolved: concurrent requests against one Agent"). CORS restricted to the Vite dev origin by default (`JARVIS_CORS_ORIGINS` env var to override). This is what `frontend/`'s HUD talks to — see `frontend/src/lib/backend.ts`'s `getAgentResponse()`. No streaming — `Agent.step()`/the LLM adapters return a full reply at once, not tokens incrementally.
 
 **Memory (`memory/store.py` + `tools/memory_tools.py`)** — markdown files with YAML frontmatter, one dir per `user_id`, under `config.memory.root_dir`. `MemoryStore`: `read`/`write`/`append` (all implemented and tested — `write` always emits the `---`/`---` structure so `read()` can always parse it back, and creates missing parent directories; `append` reads the existing entry or falls back to an empty one via `except FileNotFoundError`, preserving existing frontmatter unchanged); `load_index()` globs `memory_*.md` and pulls each file's `description` from its own frontmatter — no separate manually-maintained index file, so it can't drift out of sync; `search()` is plain substring matching, no embeddings.
 

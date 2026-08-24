@@ -41,6 +41,11 @@ jarvis-server (console script)                       [src/jarvis/server.py: main
     isn't safe for concurrent callers) await agent.step(text) → {reply}
   → CORS restricted to the Vite dev origin (JARVIS_CORS_ORIGINS to override)
   → frontend/src/lib/backend.ts's getAgentResponse() is the browser-side caller
+  → if config.telegram is set: start_telegram_bot(config, agent, lock)     [telegram_bot.py]
+      long-polls Telegram (getUpdates) for messages from an allowlisted chat id,
+      calls the *same* agent.step() under the *same* lock as /chat, replies via
+      sendMessage — so a Telegram chat and the web HUD share one conversation
+    stopped the same way MCP clients are: in the lifespan's shutdown path, clean exit or crash
 ```
 
 `Agent.step()` owns the full tool-call loop internally: send history + available tools to the adapter, execute any requested tool calls via `ToolRegistry`, feed results back in, repeat until the model answers in plain text.
@@ -49,13 +54,14 @@ jarvis-server (console script)                       [src/jarvis/server.py: main
 
 ```
 jarvis/
-├── pyproject.toml              # deps: anthropic, google-genai, pyyaml, python-dotenv, mcp, httpx2, fastapi, uvicorn
+├── pyproject.toml              # deps: anthropic, google-genai, pyyaml, python-dotenv, mcp, httpx2, fastapi, uvicorn, python-telegram-bot
 ├── config/config.example.yaml  # template; real config.yaml is gitignored, per-machine
 ├── src/jarvis/
 │   ├── config.py                        # JarvisConfig dataclasses + load_config()
 │   ├── runtime.py                       # build_agent(): shared setup/teardown, used by cli.py and server.py
 │   ├── cli.py                           # terminal entry point — see "Request flow" above
 │   ├── server.py                        # HTTP entry point (jarvis-server) — what frontend/ talks to
+│   ├── telegram_bot.py                  # optional Telegram long-polling interface, started from server.py's lifespan
 │   ├── system_prompt.md                 # built-in default system prompt
 │   ├── agent.py                         # Agent orchestrator — full tool-call loop, wired into cli.py and server.py
 │   ├── llm/
@@ -98,6 +104,8 @@ jarvis/
 **System prompt (`system_prompt.md`)** — the built-in default, loaded by `runtime.load_system_prompt()`; `config.agent.system_prompt_file`, if set, overrides it with a different file instead.
 
 **HTTP server (`server.py`)** — `jarvis-server` (FastAPI + uvicorn): one shared `Agent` built via `runtime.build_agent()` at startup (FastAPI `lifespan`), torn down on shutdown. `POST /chat {text} -> {reply}` calls `agent.step()` behind an `asyncio.Lock`, since one `Agent`'s history isn't safe for two concurrent callers (see `PLAN.md`'s "Resolved: concurrent requests against one Agent"). CORS restricted to the Vite dev origin by default (`JARVIS_CORS_ORIGINS` env var to override). This is what `frontend/`'s HUD talks to — see `frontend/src/lib/backend.ts`'s `getAgentResponse()`. No streaming — `Agent.step()`/the LLM adapters return a full reply at once, not tokens incrementally.
+
+**Telegram (`telegram_bot.py`)** — optional, fully off unless `config.telegram` is set. Started/stopped from `server.py`'s FastAPI lifespan using `python-telegram-bot`'s manual `Application` lifecycle (`initialize`/`start`/`updater.start_polling`, not the blocking `run_polling()`, since it has to live inside uvicorn's already-running event loop). Long-polls Telegram's `getUpdates` — outbound-only, so it works from behind a home NAT/router with no port-forwarding or public URL. Every incoming message is checked against `config.telegram.allowed_chat_ids`; anything else is logged and dropped, unanswered, since a reply would confirm the bot is alive to a stranger. Allowed messages go through the *same* `agent.step()` call and `asyncio.Lock` as `/chat`, so Telegram and the web HUD share one conversation history. Replies over 4096 characters (Telegram's per-message cap) are split on line boundaries before sending.
 
 **Memory (`memory/store.py` + `tools/memory_tools.py`)** — markdown files with YAML frontmatter, one dir per `user_id`, under `config.memory.root_dir`. `MemoryStore`: `read`/`write`/`append` (all implemented and tested — `write` always emits the `---`/`---` structure so `read()` can always parse it back, and creates missing parent directories; `append` reads the existing entry or falls back to an empty one via `except FileNotFoundError`, preserving existing frontmatter unchanged); `load_index()` globs `memory_*.md` and pulls each file's `description` from its own frontmatter — no separate manually-maintained index file, so it can't drift out of sync; `search()` is plain substring matching, no embeddings.
 
